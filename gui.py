@@ -1,28 +1,16 @@
-import time
-
 try:
     import tkinter as tk
     from tkinter import filedialog
     from tkinter import *
     from tkinter import ttk
     import avn
-    import csv
     import avn.dataloading
     import avn.segmentation
-
-    #from scipy.io.wavfile import read
-    #from scipy import signal
-    #import os
+    import csv
     import numpy as np
-    #import matplotlib.pyplot as plt
-    #import pylab
-    #from scipy.io import wavfile
-    #from scipy.fftpack import fft
     import glob
-    #import librosa
-
     import re
-    #from tkinter import tkk
+
     def handle_focus_in(_):
         BirdIDText.delete(0, tk.END)
         BirdIDText.config(fg='black')
@@ -31,8 +19,6 @@ try:
             BirdIDText.delete(0, tk.END)
             BirdIDText.config(fg='grey')
             BirdIDText.insert(0, "Bird ID")
-
-
     def MinFocusIn(_):
         MinThresholdText.delete(0, tk.END)
         MinThresholdText.config(fg='black')
@@ -48,7 +34,6 @@ try:
             MaxThresholdText.config(fg='grey')
             MaxThresholdText.insert(0, "0.1")
 
-
     def FileExplorerFunction():
         global song_folder
         global Bird_ID
@@ -63,13 +48,13 @@ try:
             Bird_ID = str(pattern.search(song_folder).group())
 
     def SegmentButtonClick():
-        print("Button Pressed!")
+        print("Segmenting...")
         global Bird_ID
         Bird_ID = BirdIDText.get()
         print(Bird_ID)
         global song_folder
         song_folder = song_folder + "/"
-        print(song_folder)
+        #print(song_folder)
         global segmenter
         segmenter = avn.segmentation.MFCCDerivative()
         global seg_data
@@ -82,7 +67,8 @@ try:
                 upper_threshold=0.1,
                 lower_threshold=-0.1)
         # Default upper and lower thresholds are 0.1 and -0.1 respectively #
-        out_file_dir = "C:/Users/ethan/Desktop/Roberts_Lab_Files/AVNGUI/"
+        out_file_dir = song_folder
+        print("Segmentation Complete!")
         print(seg_data.seg_table.head())
         try:
             seg_data.save_as_csv(out_file_dir)
@@ -124,21 +110,6 @@ try:
     MaxThresholdText.bind("<FocusIn>", MaxFocusIn)
     MaxThresholdText.bind("<FocusOut>", MaxFocusOut)
     MaxThresholdLabel.grid(row=4, column=0)
-
-    '''SpectrgramWindow = tk.Toplevel(gui)
-    tabControl = ttk.Notebook(SpectrgramWindow)
-    tab1 = ttk.Frame(tabControl)
-    tab2 = ttk.Frame(tabControl)
-    tabControl.add(tab1, text='Tab 1')
-    tabControl.add(tab2, text='Tab 2')
-    tabControl.pack(expand=1, fill="both")
-
-    img = PhotoImage(file='fig.png')
-    smaller_img = img.subsample(2, 2)
-    PlotLabel = tk.Label(tab1, image=smaller_img)
-    PlotLabel.pack()'''
-
-
 
     def SpectrogramCreation():
         global song_folder
@@ -226,18 +197,16 @@ try:
         label3.pack()
         #############
 
-
+        #### Add argument in avn.segmentation.Plot.plot_seg_criteria to change image dimensions
 
         tabControl.pack(expand=1, fill="both")
 
 
         SpectrogramWindow.mainloop()
-
-
-
-
     SpectrogramButton = tk.Button(text="Create Spectrogram", command = lambda : SpectrogramCreation())
     SpectrogramButton.grid(row=6)
+
+
     gui.mainloop()
 except Exception:
     print(Exception)
