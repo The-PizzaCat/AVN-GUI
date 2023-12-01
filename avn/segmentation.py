@@ -5,6 +5,7 @@ Created on Wed May  5 08:29:00 2021
 @author: Therese
 """
 
+from ast import Lt
 import glob
 import avn.dataloading as dataloading
 import avn.plotting as plotting
@@ -72,7 +73,7 @@ class SegData:
         self.Bird_ID = Bird_ID
         self.seg_table = seg_table
         
-    def save_as_csv(self, out_folder_path):
+    def save_as_csv(self, out_folder_path, minThreshold = -0.1, maxThreshold = 0.1):
         """
         Saves SegData.seg_table and SegData.seg_metrics as csv files in the 
         `out_folder_path` directory. 
@@ -98,10 +99,10 @@ class SegData:
         """
         #check if SegData has a seg_table attribute. If so, save it. 
         if hasattr(self, 'seg_table'):
-            self.seg_table.to_csv(out_folder_path + self.Bird_ID + "_seg_table.csv")
+            self.seg_table.to_csv(out_folder_path + self.Bird_ID + str(minThreshold) + "~" + str(maxThreshold) + "_seg_table.csv")
         #check if SegData has seg_metrics attribute. If so, save it. 
         if hasattr(self, 'seg_metrics'):
-            self.seg_metrics.to_csv(out_folder_path + self.Bird_ID + "_seg_metrics.csv")
+            self.seg_metrics.to_csv(out_folder_path + self.Bird_ID + str(minThreshold) + "~" + str(maxThreshold) + "_seg_metrics.csv")
 
 class Segmenter:
     """
@@ -238,7 +239,7 @@ class Segmenter:
         segmentation_data.n_fft = n_fft
         
         return segmentation_data
-      
+        
     def get_seg_criteria(self, song):
         raise NotImplementedError
     
@@ -1206,9 +1207,10 @@ class Plot():
         plt.legend()
         plt.title(plot_title)
         plt.show()
+        return plt
         
     
-    def plot_seg_criteria(seg_data, segmenter, label, file_idx = 0, figsize = (20, 5)):
+    def plot_seg_criteria(seg_data, segmenter, label, file_idx = 0, figsize = (20, 5),upper_threshold=0.1, lower_threshold=-0.1):
         """
         Plots a given segmentation criteria (ie MFCC, RMSE, RMSE Derivative) 
         over the spectrogram of a given song file.
@@ -1258,8 +1260,25 @@ class Plot():
         ax2.plot(x_axis, seg_criteria, color = 'white', label = label)
         ax2.set_ylabel("Segmentation Criteria")
         ax2.legend();
-
         
+        #Stuff Ethan Added
+        axUpper = ax.twinx()
+        axLower = ax.twinx()
+        UT = []
+        for value in x_axis:
+            UT.append(upper_threshold)
+        LT = []
+        for value in x_axis:
+            LT.append(lower_threshold)
+        axUpper.plot(x_axis, UT, color = 'white', linewidth = 3)
+        axLower.plot(x_axis, LT, color = 'white', linewidth = 3)
+        axUpper.tick_params(labelright = False)
+        axLower.tick_params(labelright = False, )
+        axUpper.set_ylim(-0.2,0.35)
+        axLower.set_ylim(-0.2,0.35)
+        ax2.set_ylim(-0.2,0.35)
+        return fig, ax, ax2, x_axis, spectrogram, axUpper, axLower, UT, LT
+
         
         
 

@@ -247,6 +247,8 @@ def plot_spectrogram_with_labels(syll_df, song_folder_path, Bird_ID, song_file =
         markers  = [plt.Line2D([0, 0], [0, 0],  color = color, marker = 'o', linestyle = '') for color in color_dict.values()]
         ax.legend(markers, color_dict.keys(), numpoints = 1, facecolor = 'black', 
                   labelcolor = 'white', markerscale = 3, fontsize = fontsize, loc = 'upper right')
+    #Added by Ethan:
+    return fig, ax, song_file_name
     
 def plot_syll(song, onset, offset, padding = 0, figsize = (5,5), title = None):
     """
