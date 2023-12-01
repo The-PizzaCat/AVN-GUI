@@ -2,36 +2,18 @@
 # avn
 # pymde
 # hdbscan
-#  Microsoft Visual C++ 14.0 or greater (required for hdbscan)
+# Microsoft Visual C++ 14.0 or greater (required for hdbscan)
 #           https://visualstudio.microsoft.com/visual-cpp-build-tools/
 
 
 '''
-For next time: Undo changes I made Monday and revert code to how it is from original labelling code
-Remove unnecesary features like dropping rows that don't work
+For next time: Fix issue where labeling tab required input from segemntation tab file selection
+    clean up code
+    see if there's any way to optimize it
+    figure out what parts of avn I updated so Therese can change avn accordingly
+    make instructions for others to use gui
 '''
 
-
-'''
-Things to change/update from Therese:
-#DONE# 1. Generate spectrograms without needing to segment -- Do this last; super difficult
-#DONE# 2. Display thresholds on spectrograms -- use axis data from fig object to add horizontal line at min/max thresholds
-#DONE# 3. Change dimensions of spectrogram images by modifying hidden variable from avn segmentation
-#DONE# 4. Add arrow buttons in spectrogram window that changes index of file selected for spectrogram instead of using tabs
-	-- Update tab upon clicking arrow button
-5. Have segmentation tables have unique names so that they don't get overwritten
-	Name is based on Bird ID + Min Threshold + Max Threshold + Date
-
-
-
-For Labeling Env:
-1. Select Folder w/ song
-2. Select Output segmentations
-3. Run!
-
-# DONE# ***Gui eventually should have a tab for segmentation and one for labeling***
-***Add brief instructions for each tab (seg vs labeling)***
-'''
 import array
 
 import numpy
@@ -128,7 +110,6 @@ try:
             lower_threshold=MinThreshold)
         # Default upper and lower thresholds are 0.1 and -0.1 respectively #
         out_file_dir = song_folder
-        #print(out_file_dir)
         print("Segmentation Complete!")
         print(seg_data.seg_table.head())
         try:
@@ -136,6 +117,8 @@ try:
             print("Successfully saved segmentation data!")
         except:
             print("Failed to save segmentation data!")
+        shutil.rmtree(song_folder + "/TempSpectrogramFiles/")
+        shutil.rmtree(str(song_folder) + 'TempFig.png')
 
     def SpectrogramDisplay(Direction):
         global ImgLabel
@@ -146,12 +129,10 @@ try:
         global newfilelist
         global seg_data
         global SpectrogramWindow
-        print(time.ctime(time.time()))
         try:
             ImgLabel.destroy()
         except:
             pass
-        segmenter = avn.segmentation.MFCCDerivative()
         if Direction == "Left":
             FileID = FileID-1
         if Direction == "Right":
@@ -166,35 +147,31 @@ try:
             for file in filelist:
                 temp1, temp2 = file.split("\\")
                 newfilelist.append(temp1 + "/" + temp2)
+        FolderSize = 20
         if FileID == 0:
-            segFolder = 0
-        if FileID%50 == 0:
-            segFolder = int(FileID//50)
+            segFolderCount = 0
+        if FileID % FolderSize == 0:
+            segFolderCount = int(FileID // FolderSize)
         else:
-            segFolder = int((FileID//50) + 1)
-        segFolderCombined = song_folder + "/TempSpectrogramFiles/"+str(segFolder)+"/"
-        if segFolder != 0:
-            for i in range(segFolder*50):
+            segFolderCount = int((FileID // FolderSize) + 1)
+
+        try:
+            os.makedirs(song_folder + "/TempSpectrogramFiles/")
+        except: pass
+        if segFolderCount != 0:
+            for i in range(segFolderCount * FolderSize):
+                segFolderCombined = song_folder + "/TempSpectrogramFiles/" + str(segFolderCount) + "/"
+                try:
+                    os.makedirs(segFolderCombined)
+                except: pass
                 shutil.copy(newfilelist[i], segFolderCombined)
         else:
-            for i in range(50):
+            for i in range(FolderSize):
+                segFolderCombined = song_folder + "/TempSpectrogramFiles/" + str(segFolderCount) + "/"
                 try:
-                    shutil.copy(newfilelist[i], segFolderCombined)
+                    os.makedirs(segFolderCombined)
                 except: pass
-        try:
-            MaxThreshold= float(MaxThresholdText.get())
-        except:
-            MaxThreshold=0.1
-        try:
-            MinThreshold= float(MinThresholdText.get())
-        except:
-            MinThreshold=-0.1
-        seg_data = segmenter.make_segmentation_table(Bird_ID, segFolderCombined,
-                                                    upper_threshold=MaxThreshold,
-                                                    lower_threshold=MinThreshold)
-        # Default upper and lower thresholds are 0.1 and -0.1 respectively
-        out_file_dir = song_folder+"/TempSpectrogramFiles"
-
+                shutil.copy(newfilelist[i], segFolderCombined)
         try:
             upper_threshold = float(MaxThresholdText.get())
         except:
@@ -203,13 +180,19 @@ try:
             lower_threshold = float(MinThresholdText.get())
         except:
             lower_threshold = -0.1
-        fig, ax, ax2, x_axis, spectrogram, axUpper, axLower, UT, LT = avn.segmentation.Plot.plot_seg_criteria(seg_data, segmenter,
+        segmenter = avn.segmentation.MFCCDerivative()
+        Temp_seg_data = segmenter.make_segmentation_table(Bird_ID, segFolderCombined,
+                                                     upper_threshold=upper_threshold,
+                                                     lower_threshold=lower_threshold)
+        # Default upper and lower thresholds are 0.1 and -0.1 respectively
+
+        fig, ax, ax2, x_axis, spectrogram, axUpper, axLower, UT, LT = avn.segmentation.Plot.plot_seg_criteria(Temp_seg_data, segmenter,
                                                                                 "MFCC Derivative",
                                                                                 file_idx=FileID, figsize = (10,2.5),
                                                                                 upper_threshold=upper_threshold, lower_threshold=lower_threshold)
-        fig.savefig('fig.png')
-        print("Figure Saved:"+'fig.png')
-        img = PhotoImage(file='fig.png')
+        fig.savefig(str(song_folder)+"/"+'TempFig.png')
+        print("Figure Saved:"+'TempFig.png')
+        img = PhotoImage(file=str(song_folder)+"/"+'TempFig.png')
         if FileID == 0:
             SpectrogramWindow = tk.Toplevel(gui)
             LeftButton = tk.Button(SpectrogramWindow, command=lambda: SpectrogramDisplay("Left"), text="Previous")
@@ -391,20 +374,22 @@ try:
         LabellingScatterplot = sns.scatterplot(data=hdbscan_df, x="X", y="Y", hue="labels", alpha=0.25, s=5)
         plt.title("My Bird's Syllables");
         LabellingFig = LabellingScatterplot.get_figure()
-        LabellingFig.savefig("Labelling.png")
-        print("Figure Saved:" + 'Labelling.png')
-        LabellingImg = PhotoImage(file='Labelling.png')
+        LabellingFig.savefig("LabellingClusters.png")
+        print("Figure Saved:" + 'LabellingClusters.png')
+        LabellingImg = PhotoImage(file='LabellingClusters.png')
         LabellingImgLabel = tk.Label(LabelingFrame, image=LabellingImg)
         LabellingImgLabel.grid(columnspan=2)
         LabellingImgLabel.update()
-        temp_songfolder = song_folder[:-6]
         song_folder = song_folder[0:-1]
-        print(song_folder)
-        for i in range(3):
+        try:
+            os.makedirs(song_folder+"/LabellingPhotos")
+        except: pass
+        print(len(glob.glob(str(song_folder) + "/*.wav")))
+        for i in range(len(glob.glob(str(song_folder) + "/*.wav"))):
+            print(i)
             fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, song_folder, "", song_file_index=i, figsize=(20, 5), fontsize=14)
-            fig.savefig(str(song_folder)+"/"+str(song_file_name)+".png")
+            fig.savefig(str(song_folder)+"/LabellingPhotos/"+str(song_file_name)+".png")
             print("Fig saved as "+str(song_file_name)+"!")
-
 
     gui = tk.Tk()
     notebook = ttk.Notebook(gui)
