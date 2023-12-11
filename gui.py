@@ -7,19 +7,19 @@
 
 '''
 Updates to Add:
- - Feature to print all spectrograms in a folder without any overlay (plain)
- - Preview for labeling module similar to that of segmentation, where people can preview labeled spectrograms
+ - #DONE# Feature to print all spectrograms in a folder without any overlay (plain)
+ - #DONE# Preview for labeling module similar to that of segmentation, where people can preview labeled spectrograms
  - Loading bar?
  - Modify function to find Bird ID within file directory so that it finds ID from .wav file names rather than folder name
- - Create tab groups that contain sub-tabs (e.g. info tab and advanced settings tab for each module, combine acoustic features of single vs multi file, etc.)
+ - #DONE# Create tab groups that contain sub-tabs (e.g. info tab and advanced settings tab for each module, combine acoustic features of single vs multi file, etc.)
     - Consider simply having tabs show/hide when you click on/off a parent tab
  - Make spectrogram (and eventually labeling when I've added it) display images full-resolution
     - Because images are so large, only preview first ~5 seconds or so
- - GPU acceleration (especially helpful for when WhisperSeg is implemented
+ - GPU acceleration (especially helpful for when WhisperSeg is implemented)
  - Transition to WhisperSeg
  - Display filename above segmentation/labeling display
- -
-
+ - #DONE# Export as .exe
+ - Add message when photos are saved from segmentation or labeling display
 '''
 
 
@@ -44,6 +44,17 @@ try:
     import os
     import time
     import customtkinter
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    import pymde
+    import matplotlib
+    import matplotlib.pyplot as plt
+    import avn.dataloading as dataloading
+    import avn.plotting
+    import hdbscan
+    import math
+    import sklearn
+    import seaborn as sns
+
 
     def handle_focus_in(_):
         if BirdIDText.get() == "Bird ID":
@@ -96,6 +107,17 @@ try:
             LabelingBirdIDText.config(fg='grey')
             LabelingBirdIDText.insert(0, "Bird ID")
 
+    def labeling_handle_focus_in_2(_):
+        if LabelingBirdIDText2.get() == "Bird ID":
+            LabelingBirdIDText2.delete(0, tk.END)
+            LabelingBirdIDText2.config(fg='black')
+
+    def labeling_handle_focus_out_2(_):
+        if LabelingBirdIDText2.get() == "":
+            LabelingBirdIDText2.delete(0, tk.END)
+            LabelingBirdIDText2.config(fg='grey')
+            LabelingBirdIDText2.insert(0, "Bird ID")
+
     def syntax_focus_in(_):
         if SyntaxBirdID.get() == "Bird ID":
             SyntaxBirdID.delete(0, tk.END)
@@ -111,7 +133,7 @@ try:
         global song_folder
         global Bird_ID
         song_folder = filedialog.askdirectory()
-        FileDisplay = tk.Label(SegmentationFrame, text=song_folder)
+        FileDisplay = tk.Label(SegmentationMainFrame, text=song_folder)
         FileDisplay.grid(row=1, column=1, sticky="w")
 
         # Automatically finds Bird ID from file path, if possible, and enters into Bird ID field
@@ -125,10 +147,15 @@ try:
     def LabelingFileExplorerFunction():
         global segmentations_path
         global Bird_ID
-        segmentations_path = filedialog.askdirectory() #e.g. "C:/where_my_segmentation_table_is/Bird_ID_segmentations.csv"
-        LabelingFileDisplay = tk.Label(LabelingFrame,text=segmentations_path)
-        LabelingFileDisplay.grid(row=1, column=1, sticky="w")
+        segmentations_path = filedialog.askopenfilename(filetypes=[(".csv files", "*.csv")]) #e.g. "C:/where_my_segmentation_table_is/Bird_ID_segmentations.csv"
+        NameLength = 45
+        if len(segmentations_path) > NameLength:
+            segmentations_path_short = segmentations_path[0:NameLength-(len(segmentations_path.split("/")[-1])+1)]+".../"+segmentations_path.split("/")[-1]
+            LabelingFileDisplay = tk.Label(LabelingMainFrame,text=segmentations_path_short)
+        else:
+            LabelingFileDisplay = tk.Label(LabelingMainFrame,text=segmentations_path)
 
+        LabelingFileDisplay.grid(row=1, column=1, sticky="w")
         # Automatically finds Bird ID from file path, if possible, and enters into Bird ID field
         pattern = re.compile('(?i)[A-Z][0-9][0-9][0-9]')
         if pattern.search(segmentations_path) != None:
@@ -137,11 +164,35 @@ try:
             LabelingBirdIDText.insert(0, str(pattern.search(segmentations_path).group()))
             Bird_ID = str(pattern.search(segmentations_path).group())
 
+    def LabelingFileExplorerFunctionSaving():
+        global labeling_path
+        global Bird_ID
+        labeling_path = filedialog.askopenfilename(filetypes=[(".csv files", "*.csv")])  # e.g. "C:/where_my_segmentation_table_is/Bird_ID_segmentations.csv"
+        NameLength = 45
+        if len(labeling_path) > NameLength:
+            labeling_path_short = labeling_path[
+                                       0:NameLength - (len(labeling_path.split("/")[-1]) + 1)] + ".../" + \
+                                       labeling_path.split("/")[-1]
+            LabelingFileDisplay2 = tk.Label(LabelingBulkSave, text=labeling_path_short)
+        else:
+            LabelingFileDisplay2 = tk.Label(LabelingBulkSave, text=labeling_path)
+
+        LabelingFileDisplay2.grid(row=1, column=1, sticky="w")
+        LabelingFileDisplay2.grid(row=0, column=1, sticky="w")
+
+        # Automatically finds Bird ID from file path, if possible, and enters into Bird ID field
+        pattern = re.compile('(?i)[A-Z][0-9][0-9][0-9]')
+        if pattern.search(labeling_path) != None:
+            LabelingBirdIDText2.delete(0, tk.END)
+            LabelingBirdIDText2.config(fg='black')
+            LabelingBirdIDText2.insert(0, str(pattern.search(labeling_path).group()))
+            Bird_ID = str(pattern.search(labeling_path).group())
+
     def AcousticsFileExplorerFunction():
         global AcousticsDirectory
         global Bird_ID
         AcousticsDirectory = filedialog.askopenfilename(filetypes = [(".wav files", "*.wav")])
-        AcousticsFileDisplay = tk.Label(AcousticsFrame, text=AcousticsDirectory.split("/")[-1])
+        AcousticsFileDisplay = tk.Label(AcousticsMainFrameSingle, text=AcousticsDirectory.split("/")[-1])
         AcousticsFileDisplay.grid(row=1, column=1, columnspan=2)
 
         # Automatically finds Bird ID from file path, if possible, and enters into Bird ID field
@@ -155,14 +206,14 @@ try:
     def SyntaxFileExplorer():
         global SyntaxDirectory
         SyntaxDirectory = filedialog.askopenfilename(filetypes=[(".csv files", "*.csv")])
-        SyntaxFileDisplay = tk.Label(SyntaxFrame, text=SyntaxDirectory.split("/")[-1])
+        SyntaxFileDisplay = tk.Label(SyntaxMainFrame, text=SyntaxDirectory.split("/")[-1])
         SyntaxFileDisplay.grid(row=1, column=1)
 
     def MultiAcousticsFileExplorerFunction():
         global MultiAcousticsDirectory
         global Bird_ID
         MultiAcousticsDirectory = filedialog.askopenfilename(filetypes = [(".csv files", "*.csv")])
-        MultiAcousticsFileDisplay = tk.Label(MultiAcousticsFrame, text=MultiAcousticsDirectory.split("/")[-1])
+        MultiAcousticsFileDisplay = tk.Label(AcousticsMainFrameMulti, text=MultiAcousticsDirectory.split("/")[-1])
         MultiAcousticsFileDisplay.grid(row=1, column=1, columnspan=2)
 
         # Automatically finds Bird ID from file path, if possible, and enters into Bird ID field
@@ -172,10 +223,6 @@ try:
             BirdIDText.config(fg='black')
             BirdIDText.insert(0, str(pattern.search(MultiAcousticsDirectory.split("/")[-2]).group()))
             Bird_ID = str(pattern.search(MultiAcousticsDirectory.split("/")[-2]).group())
-
-    def HelpButton():
-        Help = tk.Toplevel(gui)
-        Help.mainloop()
 
     def SegmentButtonClick():
         SegmentingProgressLabel = tk.Label(SegmentationFrame, text="Segmenting...", font=("Arial", 10), justify=CENTER)
@@ -295,29 +342,53 @@ try:
                                                      upper_threshold=upper_threshold,
                                                      lower_threshold=lower_threshold)
 
-        fig, ax, ax2, x_axis, spectrogram, axUpper, axLower, UT, LT = avn.segmentation.Plot.plot_seg_criteria(Temp_seg_data, segmenter,
-                                                                                "MFCC Derivative",
-                                                                                file_idx=FileID, figsize = (10,2.5),
-                                                                                upper_threshold=upper_threshold, lower_threshold=lower_threshold)
+        #fig, ax, ax2, x_axis, spectrogram, axUpper, axLower, UT, LT = avn.segmentation.Plot.plot_seg_criteria(Temp_seg_data, segmenter,
+        #                                                                        "MFCC Derivative",
+        #                                                                        file_idx=FileID, figsize = (10,2.5),
+        #                                                                        upper_threshold=upper_threshold, lower_threshold=lower_threshold)
+
+
+        Temp_seg_data.seg_table['labels'] = ""
+        #print(Temp_seg_data.seg_table)
+        fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(Temp_seg_data.seg_table, song_folder, "",
+                                                                            song_file_index=FileID, figsize=(12, 4),
+                                                                            fontsize=14, add_legend=False)
+
         # Save spectrogram
-        fig.savefig(str(song_folder)+"/"+'TempFig.png')
-        print("Figure Saved:"+'TempFig.png')
-        img = PhotoImage(file=str(song_folder)+"/"+'TempFig.png')
+
+
+
+
+        #fig.savefig(str(song_folder)+"/"+'TempFig.png')
+        #print("Figure Saved:"+'TempFig.png')
+        #img = PhotoImage(file=str(song_folder)+"/"+'TempFig.png')
 
         # Create pop-up window to display spectrograms -- only needed to be created once and is reused for subsequent spectrograms
+        def SaveSegDisplay(fig, newfilelist, FileID):
+            SaveMessage = tk.Label(SpectrogramWindow, text="Saving Spectrogram...", justify="center")
+            SaveMessage.grid(row=1, column=50, columnspan=3)
+            fig.savefig(str(newfilelist[FileID]) + ".png")
+            time.sleep(0.1)
+            SaveMessage.config(text="Spectrogram Saved!")
+            SaveMessage.update()
+
         if FileID == 0:
             SpectrogramWindow = tk.Toplevel(gui)
             LeftButton = tk.Button(SpectrogramWindow, command=lambda: SpectrogramDisplay("Left"), text="Previous")
             LeftButton.grid(row=0, column=50)
             RightButton = tk.Button(SpectrogramWindow, command=lambda: SpectrogramDisplay("Right"), text="Next")
             RightButton.grid(row=0, column=51)
-            SaveButton = tk.Button(SpectrogramWindow, command=fig.savefig(str(newfilelist[FileID])+".png"), text="Save")
+            SaveButton = tk.Button(SpectrogramWindow, command=lambda: SaveSegDisplay(fig, newfilelist, FileID), text="Save")
             SaveButton.grid(row=0, column=52)
 
         # Load spectrogram into gui
-        ImgLabel = tk.Label(SpectrogramWindow, image=img)
-        ImgLabel.grid(row=1, columnspan=100)
-        ImgLabel.update()
+        #ImgLabel = tk.Label(SpectrogramWindow, image=img)
+        #ImgLabel.grid(row=2, columnspan=100)
+        #ImgLabel.update()
+
+        canvas = FigureCanvasTkAgg(fig, master=SpectrogramWindow)  # A tk.DrawingArea.
+        canvas.draw()
+        canvas.get_tk_widget().grid(row=2, columnspan=100)
 
         # Update gui so it displays current spectrogram
         SpectrogramWindow.mainloop()
@@ -333,28 +404,11 @@ try:
         global song_folder
         global LabelingFileDisplay
         segmentations_path_temp = segmentations_path #e.g. "C:/where_my_wav_files_are/Bird_ID/90/"
-        tempsong_folder = segmentations_path.split("\\")
-        segmentations_path = glob.glob(str(segmentations_path) + "/*" + "_seg_table.csv")
-        try:
-            segmentations_path = segmentations_path[0].replace("\\\\","/")
-        except: pass
+        tempsong_folder = segmentations_path.split("/")
         song_folder = ""
-        for f in tempsong_folder:
-            song_folder = song_folder+f+"\\"
+        for f in tempsong_folder[0:-1]:
+            song_folder = song_folder+f+"/"
         output_file = song_folder+"/"+str(Bird_ID)+"_labels.csv" #e.g. "C:/where_I_want_the_labels_to_be_saved/Bird_ID_labels.csv"
-        ######################################
-        import pymde
-        import numpy as np
-        import pandas as pd
-        import librosa
-        import matplotlib
-        import matplotlib.pyplot as plt
-        import avn.dataloading as dataloading
-        import avn.plotting
-        import hdbscan
-        import math
-        import sklearn
-        import seaborn as sns
         ###########################################
         def make_spec(syll_wav, hop_length, win_length, n_fft, amin, ref_db, min_level_db):
             spectrogram = librosa.stft(syll_wav, hop_length=hop_length, win_length=win_length, n_fft=n_fft)
@@ -367,7 +421,7 @@ try:
         ############################################
         amin = 1e-5
         ref_db = 20
-        min_level_db = -28
+        min_level_db = -28 # ERROR! If a .wav file contains a sound that's too quiet, the audio.values variable for that row will be NULL, causing an error
         win_length = 512  # the AVGN default is based on ms duration and sample rate, and it 441.
         hop_length = 128  # the AVGN default is based on ms duration and sample rate, and it is 88.
         n_fft = 512
@@ -377,14 +431,13 @@ try:
         #############################################
         # load segmentations
         predictions_reformat = pd.read_csv(segmentations_path)
-        #predictions_reformat = predictions_reformat.rename(columns={"onset_s": 'onsets',
-        #                                                            "offset_s": 'offsets',
-        #                                                            "audio_path": 'files'})
-        #predictions_reformat = predictions_reformat[predictions_reformat.label == 's']
 
         # Find any syllables with a duration less than 0.025s, and add on 0.01ms before the onset and 0.01ms after the offset
         predictions_reformat['onsets'][predictions_reformat['offsets'] - predictions_reformat['onsets'] < 0.025] = \
         predictions_reformat['onsets'] - 0.01
+
+
+        # 8	2.2407256235827666	2.2523356009070294	B651_44571.26718440_1_10_7_25_18.wav
 
         segmentations = predictions_reformat
 
@@ -402,22 +455,22 @@ try:
 
             syllable_df = segmentations[segmentations['files'] == song_file]
 
-            # this section is based on avgn.signalprocessing.create_spectrogram_dataset.get_row_audio()
+            # this section is based on avn.signalprocessing.create_spectrogram_dataset.get_row_audio()
             syllable_df["audio"] = [song.data[int(st * song.sample_rate): int(et * song.sample_rate)]
                                     for st, et in zip(syllable_df.onsets.values, syllable_df.offsets.values)]
             syllable_dfs = pd.concat([syllable_dfs, syllable_df])
+            if song_file == 'B651_44571.26718440_1_10_7_25_18.wav':
+                for st, et in zip(syllable_df.onsets.values, syllable_df.offsets.values):
+                    print("----------------")
+                    print(st)
+                    print(et)
+                    print(song.sample_rate)
+                    print(song.data)
+                    print(song.data[int(st * song.sample_rate): int(et * song.sample_rate)])
 
         # Normalize the audio  --- Ethan's comment: This won't work when there's an empty array for syllable_dfs_audio_values, so I'm just going to set those to '[0]'
-        droppedRows = []
-        #for i in range(len(syllable_dfs.audio.values)):
-        #
-        #    try:
-        #        syllable_dfs['audio'][i] = librosa.util.normalize(syllable_dfs.audio.values[i])
-        #    except:
-        ##        print("Error! Audio values at line "+str(i)+" are invalid!"+" Line "+str(i)+" has been deleted.")
-         #       syllable_dfs['audio'][i] = np.array([])
-         #       droppedRows.append(i)
         syllable_dfs['audio'] = [librosa.util.normalize(i) for i in syllable_dfs.audio.values]
+
         # compute spectrogram for each syllable
         syllables_spec = []
 
@@ -466,20 +519,9 @@ try:
         # cluster
         min_cluster_size = math.floor(embedding.shape[0] * min_cluster_prop)
         clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, core_dist_n_jobs=1).fit(embedding)
-        print(embedding.shape)
-        #for i in droppedRows:
-        #    clusterer.pop(i)
 
-        hdbscan_df = syllable_dfs
 
-        # I had an issue where len(labels) was less than len(hdbscan_df), so I'm deleting any extra rows at the end to make them the same length
-        #if len(hdbscan_df["files"]) != len(labels):
-        #    if len(hdbscan_df["files"]) > len(labels):
-        #        while a < len(hdbscan_df["files"]) - len(labels):
-        #            hdbscan_df.drop(axis=0, index=len(hdbscan_df))
-        #    if len(hdbscan_df["files"]) < len(labels):
-        #        while a < len(labels) - len(hdbscan_df["files"]):
-        #            hdbscan_df.drop(axis=0, index=len(hdbscan_df))
+        global hdbscan_df
         hdbscan_df = syllable_dfs
         hdbscan_df["labels"] = clusterer.labels_
 
@@ -492,10 +534,13 @@ try:
         LabelingScatterplot = sns.scatterplot(data=hdbscan_df, x="X", y="Y", hue="labels", alpha=0.25, s=5)
         plt.title("My Bird's Syllables");
         LabelingFig = LabelingScatterplot.get_figure()
-        LabelingFig.savefig("LabelingClusters.png")
+
+        LabelingFig.savefig(song_folder+"/LabelingClusters.png")
         print("Figure Saved:" + 'LabelingClusters.png')
         LabelingImg = PhotoImage(file='LabelingClusters.png')
+
         LabelingWindow = tk.Toplevel(gui)
+
         LabelingImgLabel = tk.Label(LabelingWindow, image=LabelingImg)
         LabelingImgLabel.grid(columnspan=2)
         LabelingImgLabel.update()
@@ -503,19 +548,92 @@ try:
         LabelingWindow.update()
         print("UMAP Generated!")
 
+        LabelingDisplay()
         # Make folder for storing labeling photos
-        if int(LabelingPhotoCount.get()) > 0:
+
+    def LabelingDisplay(Direction = "Start"):
+        global label_FileID
+        global song_folder
+        global hdbscan_df
+        if Direction == "Start":
             try:
-                os.makedirs(song_folder+"/LabelingPhotos")
+                os.makedirs(song_folder + "/LabelingPhotos")
             except: pass
+            LabelingDisplayWindow = tk.Toplevel(gui)
+            LabelingPreviousButton = tk.Button(LabelingDisplayWindow, text="Previous", command=lambda: LabelingDisplay(Direction = "Left"))
+            LabelingPreviousButton.grid(row=0, column=10)
+            LabelingNextButton = tk.Button(LabelingDisplayWindow, text="Next", command= lambda: LabelingDisplay(Direction = "Right"))
+            LabelingNextButton.grid(row=0, column=11)
+            LabelingSaveButton = tk.Button(LabelingDisplayWindow, text="Save", command=lambda: LabelingDisplaySave)
+            LabelingSaveButton.grid(row=0, column=12)
+            LabelingDisplayFrame = tk.Frame(LabelingDisplayWindow)
+            LabelingDisplayFrame.grid(row=1, column=0, columnspan=21)
+            label_FileID = 0
+        if Direction == "Left":
+            label_FileID -= 1
+        if Direction == "Right":
+            label_FileID += 1
+
+        label_fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, song_folder, "",
+                                                                            song_file_index=label_FileID, figsize=(12, 4),
+                                                                            fontsize=14)
+
+        label_canvas = FigureCanvasTkAgg(label_fig, master=LabelingDisplayFrame)  # A tk.DrawingArea.
+        label_canvas.draw()
+        label_canvas.get_tk_widget().grid()
+
+        LabelingDisplayWindow.mainloop()
+
+    def LabelingDisplaySave():
+        global label_FileID
+        global song_folder
+        global segmentations_path
+        hdbscan_df = pd.read_csv(segmentations_path)
+        fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, song_folder, "",
+                                                                                  song_file_index=label_FileID,
+                                                                                  figsize=(15, 4),
+                                                                                  fontsize=14)
+        fig.savefig(str(song_folder) + "/LabelingPhotos/" + str(song_file_name) + ".png")
+        print("Fig saved as " + str(song_file_name) + "!")
+
+    def LabelingSavePhotos():
+        global LabelingSaveAllCheck
+        global label_FileID
+        global labeling_path
+        global BulkLabelFiles_to_save
+        song_folder = ""
+        for i in labeling_path.split("/")[:-1]:
+            song_folder = song_folder+i+"/"
+        hdbscan_df = pd.read_csv(labeling_path)
+        LabelingSaveProgress = tk.Label(LabelingBulkSave, text="Saving...")
+        LabelingSaveProgress.grid(row=6, column=0, columnspan=2)
+        time.sleep(0.1)
+        try:
+            os.makedirs(song_folder+"/LabeingPhotos")
+        except: pass
+        if LabelingSaveAllCheck.get() == 1:
             i = glob.glob(str(song_folder) + "/*.wav")
-            for a in range(int(LabelingPhotoCount.get())):
-                LabelingProgress.config(text="Saving Labeling Images ("+str(a+1)+" of "+str(LabelingPhotoCount.get())+")")
-                LabelingProgress.update()
-                fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, song_folder, "", song_file_index=a, figsize=(20, 5), fontsize=14)
-                fig.savefig(str(song_folder)+"/LabelingPhotos/"+str(song_file_name)+".png")
-                print("Fig saved as "+str(song_file_name)+"!")
-        LabelingProgress.config(text="Labeling Complete!")
+            for a in range(len(i)):
+                LabelingSaveProgress.config(
+                    text="Saving Labeling Images (" + str(a + 1) + " of " + str(len(i)) + ")")
+                LabelingSaveProgress.update()
+                fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, song_folder, "",
+                                                                                    song_file_index=a, figsize=(20, 5),
+                                                                                    fontsize=14)
+                fig.savefig(str(song_folder) + "/LabelingPhotos/" + str(song_file_name) + ".png")
+        if LabelingSaveAllCheck.get() == 0:
+            for a in BulkLabelFiles_to_save:
+                LabelingSaveProgress.config(
+                    text="Saving Labeling Images (" + str(BulkLabelFiles_to_save.index(a) + 1) + " of " + str(len(BulkLabelFiles_to_save)) + ")")
+                LabelingSaveProgress.update()
+                fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, song_folder, "",
+                                                                                    song_file_index=BulkLabelFiles_to_save.index(a), figsize=(20, 5),
+                                                                                    fontsize=14)
+                fig.savefig(str(song_folder) + "/LabelingPhotos/" + str(song_file_name) + ".png")
+        LabelingSaveProgress.config(text="Labeling Complete!")
+        LabelingSaveProgress.update()
+        time.sleep(5)
+        LabelingSaveProgress.destroy()
 
     def AcousticsFeaturesOneFile():
         AcousticsProgress = tk.Label(AcousticsFrame, text="Calculating Acoustics...")
@@ -627,8 +745,61 @@ try:
         syntax_analysis_metadata = syntax_data.save_syntax_data(tempSyntaxDirectory2)
         SyntaxProgress.config(text="Complete!")
 
+    def FindPlainSpectrograms():
+        global PlainDirectory
+        PlainDirectory = filedialog.askdirectory()
+        PlainDirectoryLabel = tk.Label(PlainSpectro, text=str(PlainDirectory))
+        PlainDirectoryLabel.grid(row=1, column=1)
+
+    def FindPlainSpectrogramsAlt():
+        global PlainDirectoryAlt
+        PlainDirectoryAlt = filedialog.askopenfilenames(filetypes=[(".wav files", "*.wav")])
+        PlainDirectoryLabelAlt = tk.Label(PlainSpectroAlt, text=str(len(PlainDirectoryAlt))+" files selected")
+        PlainDirectoryLabelAlt.grid(row=1, column=1)
+
+    def PrintPlainSpectrograms():
+        global PlainDirectory
+        try:
+            os.makedirs(PlainDirectory + "/Unlabeled Spectrograms")
+        except: pass
+        FileList = glob.glob(str(PlainDirectory) + "/*.wav")
+        PlainProgressLabel = tk.Label(PlainSpectro, text="Generating Spectrograms...")
+        PlainProgressLabel.grid(row=3, column=1)
+        f = 0
+        for file in FileList:
+            f+=1
+            PlainProgressLabel.config(text="Generating Spectrograms ("+str(f)+" of "+str(len(FileList))+")")
+            PlainProgressLabel.update()
+            time.sleep(0.1)
+            song = avn.dataloading.SongFile(file)
+            spectrogram_db = avn.plotting.make_spectrogram(song)
+            plt = avn.plotting.plot_spectrogram(spectrogram_db, song.sample_rate) # Modified avn.plotting.plot_spectrograms to return plot
+
+            plt.savefig(PlainDirectory+"/Unlabeled Spectrograms"+"/"+str(file.split("/")[-1].split("\\")[-1])+".png")
+
+    def PrintPlainSpectrogramsAlt():
+        global PlainDirectoryAlt
+        PlainProgressLabel = tk.Label(PlainSpectroAlt, text="Generating Spectrograms...")
+        PlainProgressLabel.grid(row=3, column=1)
+        f = 0
+        SaveLocation = ""
+        for x in PlainDirectoryAlt[0].split("/")[:-1]:
+            SaveLocation = SaveLocation+x+"/"
+        for file in PlainDirectoryAlt:
+            f+=1
+            PlainProgressLabel.config(text="Generating Spectrograms ("+str(f)+" of "+str(len(PlainDirectoryAlt))+")")
+            PlainProgressLabel.update()
+            time.sleep(0.1)
+            song = avn.dataloading.SongFile(file)
+            spectrogram_db = avn.plotting.make_spectrogram(song)
+            plt = avn.plotting.plot_spectrogram(spectrogram_db, song.sample_rate) # Modified avn.plotting.plot_spectrograms to return plot
+
+            plt.savefig(SaveLocation+"/Unlabeled Spectrograms"+"/"+str(file.split("/")[-1].split("\\")[-1])+".png")
+        PlainProgressLabel.config(text="Complete!")
+
     ### Initialize gui ###
     gui = tk.Tk()
+    gui.title("AVN Segmentation and Labeling")
 
     ParentStyle = ttk.Style()
     ParentStyle.configure('Parent.TNotebook.Tab', font=('Arial', '10', 'bold'))
@@ -636,95 +807,152 @@ try:
     notebook = ttk.Notebook(gui, style='Parent.TNotebook.Tab')
     notebook.grid()
 
-
+    MasterFrameWidth = 500
+    MasterFrameHeight = 300
 
     ### Segmentation Window ###
     SegmentationFrame = tk.Frame(gui)
-    notebook.add(SegmentationFrame, text="Segmentation",padding=[50,50])
-    gui.title("AVN Segmentation and Labeling")
-    greeting = tk.Label(SegmentationFrame, text="Welcome to the AVN gui!")
-    greeting.grid(row=0, columnspan=2)
+    notebook.add(SegmentationFrame, text="Segmentation")
 
-    BirdIDText = tk.Entry(SegmentationFrame, font=("Arial", 15), justify="center", fg="grey")
+    SegmentationMainFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    SegmentationNotebook = ttk.Notebook(SegmentationFrame)
+    SegmentationNotebook.grid(row=1)
+    SegmentationNotebook.add(SegmentationMainFrame, text="Home")
+    SegmentationMainFrame.grid_propagate(False)
+    SegmentationSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    SegmentationNotebook.add(SegmentationSettingsFrame, text="Advanced Settings")
+    SegmentationInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    SegmentationNotebook.add(SegmentationInfoFrame, text="Info")
+
+
+    BirdIDText = tk.Entry(SegmentationMainFrame, font=("Arial", 15), justify="center", fg="grey")
     BirdIDText.insert(0, "Bird ID")
     BirdIDText.bind("<FocusIn>", handle_focus_in)
     BirdIDText.bind("<FocusOut>", handle_focus_out)
     BirdIDText.grid(row=2, column=1, sticky="w")
 
-    BirdIDLabel = tk.Label(SegmentationFrame, text="Bird ID:")
+    BirdIDLabel = tk.Label(SegmentationMainFrame, text="Bird ID:")
     BirdIDLabel.grid(row=2, column=0)
 
-    FileExplorer = tk.Button(SegmentationFrame, text="Find Folder", command = lambda : FileExplorerFunction())
+    FileExplorer = tk.Button(SegmentationMainFrame, text="Find Folder", command = lambda : FileExplorerFunction())
     FileExplorer.grid(row=1, column=0)
 
-    SegmentButton = tk.Button(SegmentationFrame, text="Segment!", command = lambda : SegmentButtonClick())
+    SegmentButton = tk.Button(SegmentationMainFrame, text="Segment!", command = lambda : SegmentButtonClick())
     SegmentButton.grid(row=6, columnspan=2)
 
-    MinThresholdText = tk.Entry(SegmentationFrame, justify="center", fg='grey', font=("Arial", 15))
+    MinThresholdText = tk.Entry(SegmentationMainFrame, justify="center", fg='grey', font=("Arial", 15))
     MinThresholdText.insert(0, "-0.1")
     MinThresholdText.grid(row=3, column=1, sticky="w")
-    MinThresholdLabel = tk.Label(SegmentationFrame, text="Min Threshold:")
+    MinThresholdLabel = tk.Label(SegmentationMainFrame, text="Min Threshold:")
     MinThresholdText.bind("<FocusIn>", MinFocusIn)
     MinThresholdText.bind("<FocusOut>", MinFocusOut)
     MinThresholdLabel.grid(row=3, column=0, sticky="w")
 
-    MaxThresholdText = tk.Entry(SegmentationFrame, justify="center", fg='grey', font=("Arial", 15))
+    MaxThresholdText = tk.Entry(SegmentationMainFrame, justify="center", fg='grey', font=("Arial", 15))
     MaxThresholdText.insert(0, "0.1")
     MaxThresholdText.grid(row=4, column=1, sticky="w")
-    MaxThresholdLabel = tk.Label(SegmentationFrame, text="Max Threshold:")
+    MaxThresholdLabel = tk.Label(SegmentationMainFrame, text="Max Threshold:")
     MaxThresholdText.bind("<FocusIn>", MaxFocusIn)
     MaxThresholdText.bind("<FocusOut>", MaxFocusOut)
     MaxThresholdLabel.grid(row=4, column=0)
 
-    SpectrogramButton = tk.Button(SegmentationFrame, text="Create Spectrogram", command = lambda : SpectrogramDisplay("Start"))
+    SpectrogramButton = tk.Button(SegmentationMainFrame, text="Segmentation Preview", command = lambda : SpectrogramDisplay("Start"))
     SpectrogramButton.grid(row=5, columnspan=2)
 
 
-    def LabelingClick(_):
-        pass
-        #print(gui.winfo_children())
-        #notebook.forget(gui.winfo_children()[2])
-
-
     ### Labeling Window ###
-    LabelingFrame = tk.Frame()
+    LabelingFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
     notebook.add(LabelingFrame, text="Labeling")
-    LabelingFrame.bind("<FocusIn>", LabelingClick)
 
-    LabelingButton = tk.Button(LabelingFrame, text="Labeling", command = lambda : labelingPlaceholder())
-    LabelingButton.grid(row=4, column = 0,columnspan=2)
-    Labelinggreeting = tk.Label(LabelingFrame, text="Welcome to the AVN gui!")
-    Labelinggreeting.grid(row=0, column=0, columnspan=2)
+    LabelingMainFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    LabelingNotebook = ttk.Notebook(LabelingFrame)
+    LabelingNotebook.grid(row=1)
+    LabelingNotebook.add(LabelingMainFrame, text="Home")
+    LabelingBulkSave = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    LabelingNotebook.add(LabelingBulkSave, text="Bulk Saving")
+    LabelingSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    LabelingNotebook.add(LabelingSettingsFrame, text="Advanced Settings")
+    LabelingInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    LabelingNotebook.add(LabelingInfoFrame, text="Info")
 
-    LabelingBirdIDText = tk.Entry(LabelingFrame, font=("Arial", 15), justify="center", fg="grey")
+    LabelingButton = tk.Button(LabelingMainFrame, text="Labeling", command = lambda : labelingPlaceholder())
+    LabelingButton.grid(row=5, column=0, columnspan=2)
+
+    LabelingBirdIDText = tk.Entry(LabelingMainFrame, font=("Arial", 15), justify="center", fg="grey")
     LabelingBirdIDText.insert(0, "Bird ID")
     LabelingBirdIDText.bind("<FocusIn>", labeling_handle_focus_in)
     LabelingBirdIDText.bind("<FocusOut>", labeling_handle_focus_out)
     LabelingBirdIDText.grid(row=2, column=1, sticky="w")
 
-    LabelingBirdIDLabel = tk.Label(LabelingFrame, text="Bird ID:")
+    LabelingBirdIDLabel = tk.Label(LabelingMainFrame, text="Bird ID:")
     LabelingBirdIDLabel.grid(row=2, column=0)
 
-    LabelingFileExplorer = tk.Button(LabelingFrame, text="Find Folder", command=lambda: LabelingFileExplorerFunction())
+    LabelingFileExplorer = tk.Button(LabelingMainFrame, text="Find Segmentation File", command=lambda: LabelingFileExplorerFunction())
     LabelingFileExplorer.grid(row=1, column=0)
 
-    LabelingPhotoText = tk.Label(LabelingFrame, text="Number of labeling photos to save:")
-    LabelingPhotoText.grid(row=3, column=0)
+    #LabelingPhotoText = tk.Label(LabelingBulkSave, text="Number of labeling photos to save:")
+    #LabelingPhotoText.grid(row=2, column=0)
 
-    LabelingPhotoCount = tk.Spinbox(LabelingFrame, justify="center", font=("Arial",15),from_=0, to=20)
-    LabelingPhotoCount.grid(row=3, column=1, sticky="w")
-    LabelingPhotoCount.bind("<FocusIn>",LabelingCountFocusIn)
-    LabelingPhotoCount.bind("<FocusOut>",LabelingCountFocusOut)
+    #LabelingPhotoCount = tk.Spinbox(LabelingBulkSave, justify="center", font=("Arial",15),from_=0, to=20)
+    #LabelingPhotoCount.grid(row=3, column=1, sticky="w")
+    #LabelingPhotoCount.bind("<FocusIn>",LabelingCountFocusIn)
+    #LabelingPhotoCount.bind("<FocusOut>",LabelingCountFocusOut)
+
+
+    LabelingBirdIDText2 = tk.Entry(LabelingBulkSave, font=("Arial", 15), justify="center", fg="grey")
+    LabelingBirdIDText2.insert(0, "Bird ID")
+    LabelingBirdIDText2.bind("<FocusIn>", labeling_handle_focus_in_2)
+    LabelingBirdIDText2.bind("<FocusOut>", labeling_handle_focus_out_2)
+    LabelingBirdIDText2.grid(row=2, column=1, sticky="w")
+
+    LabelingBirdIDLabel2 = tk.Label(LabelingBulkSave, text="Bird ID:")
+    LabelingBirdIDLabel2.grid(row=2, column=0)
+
+    LabelingFileExplorer2 = tk.Button(LabelingBulkSave, text="Find Labeling File",
+                                     command=lambda: LabelingFileExplorerFunctionSaving())
+    LabelingFileExplorer2.grid(row=0, column=0)
+
+    global LabelingSaveAllCheck
+    LabelingSaveAllCheck = IntVar()
+    def LabelingSaveAllFilesText(LabelingSaveAllCheck):
+        global Overwrite_BulkLabelFiles
+        if LabelingSaveAllCheck.get() == 1:
+            Overwrite_BulkLabelFiles = tk.Label(LabelingBulkSave, text="Whole Folder Selected")
+            Overwrite_BulkLabelFiles.grid(row=1, column=1)
+        if LabelingSaveAllCheck.get() == 0:
+            try:
+                Overwrite_BulkLabelFiles.destroy()
+            except: pass
+
+    LabelingSaveAll = tk.Checkbutton(LabelingBulkSave, text="Save Entire Folder", command=lambda:LabelingSaveAllFilesText(LabelingSaveAllCheck), variable=LabelingSaveAllCheck)
+    LabelingSaveAll.grid(row=4, column=1)
+
+    LabelingBulkSaveButton = tk.Button(LabelingBulkSave, text="Save", command=lambda:LabelingSavePhotos())
+    LabelingBulkSaveButton.grid(row=5, column=0, columnspan=2)
+
+    def BulkLablingFileText():
+        global BulkLabelFiles_to_save
+        BulkLabelFiles_to_save = filedialog.askopenfilenames(filetypes=[(".wav files", "*.wav")])
+        BulkLabelFiles = tk.Label(LabelingBulkSave, text=str(len(BulkLabelFiles_to_save)) + " files selected")
+        BulkLabelFiles.grid(row=1, column=1)
+
+    LabelingBulkFileSelect = tk.Button(LabelingBulkSave, text="Select Song Files to Save", command=lambda:BulkLablingFileText())
+    LabelingBulkFileSelect.grid(row=1, column = 0)
 
     ### Single File Acoustic Features Window ###
-    AcousticsFrame = tk.Frame()
-    notebook.add(AcousticsFrame, text="Acoustic Features - Single File")
+    AcousticsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    notebook.add(AcousticsFrame, text="Acoustic Features")
 
-    AcousticsFileExplorer = tk.Button(AcousticsFrame, text="Find Song File",
+    AcousticsMainFrameSingle = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    AcousticsNotebook = ttk.Notebook(AcousticsFrame)
+    AcousticsNotebook.grid(row=1)
+    AcousticsNotebook.add(AcousticsMainFrameSingle, text="Single File")
+
+    AcousticsFileExplorer = tk.Button(AcousticsMainFrameSingle, text="Find Song File",
                                       command=lambda: AcousticsFileExplorerFunction())
     AcousticsFileExplorer.grid(row=1, column=0)
 
-    AcousticsText = tk.Label(AcousticsFrame, text="Please select which acoustics features you would like to analyze:", justify="center")
+    AcousticsText = tk.Label(AcousticsMainFrameSingle, text="Please select which acoustics features you would like to analyze:", justify="center")
     AcousticsText.grid(row=0, column=0, columnspan=2)
 
     global RunGoodness
@@ -761,32 +989,40 @@ try:
             for checkbox in ButtonNameList:
                 checkbox.set(0)
 
-    CheckAll_CheckBox = tk.Checkbutton(AcousticsFrame, text='Select All', variable=CheckAll, command=lambda:CheckAllBoxes(CheckAll))
+    CheckAll_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text='Select All', variable=CheckAll, command=lambda:CheckAllBoxes(CheckAll))
     CheckAll_CheckBox.grid(row=2, column=1, columnspan=1)
-    Goodness_CheckBox = tk.Checkbutton(AcousticsFrame, text= "Goodness", anchor=tk.W, variable=RunGoodness)
+    Goodness_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text= "Goodness", anchor=tk.W, variable=RunGoodness)
     Goodness_CheckBox.grid(row=3, column=1, columnspan=1)
-    Mean_frequency_CheckBox = tk.Checkbutton(AcousticsFrame, text="Mean Frequency",anchor=tk.W, variable=RunMean_frequency)
+    Mean_frequency_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text="Mean Frequency",anchor=tk.W, variable=RunMean_frequency)
     Mean_frequency_CheckBox.grid(row=4, column=1, columnspan=1)
-    Entropy_CheckBox = tk.Checkbutton(AcousticsFrame, text="Entropy", anchor=tk.W, variable=RunEntropy)
+    Entropy_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text="Entropy", anchor=tk.W, variable=RunEntropy)
     Entropy_CheckBox.grid(row=5, column=1, columnspan=1)
-    Amplitude_CheckBox = tk.Checkbutton(AcousticsFrame, text="Amplitude", anchor=tk.W, variable=RunAmplitude)
+    Amplitude_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text="Amplitude", anchor=tk.W, variable=RunAmplitude)
     Amplitude_CheckBox.grid(row=6, column=1, columnspan=1)
-    Amplitude_modulation_CheckBox = tk.Checkbutton(AcousticsFrame, text="Amplitude Modulation", anchor=tk.W, variable=RunAmplitude_modulation)
+    Amplitude_modulation_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text="Amplitude Modulation", anchor=tk.W, variable=RunAmplitude_modulation)
     Amplitude_modulation_CheckBox.grid(row=7, column=1, columnspan=1)
-    Frequency_modulation_CheckBox = tk.Checkbutton(AcousticsFrame, text="Frequency Modulation", anchor=tk.W, variable=RunFrequency_modulation)
+    Frequency_modulation_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text="Frequency Modulation", anchor=tk.W, variable=RunFrequency_modulation)
     Frequency_modulation_CheckBox.grid(row=8, column=1, columnspan=1)
-    Pitch_CheckBox = tk.Checkbutton(AcousticsFrame, text="Pitch", anchor=tk.W, variable=RunPitch)
+    Pitch_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text="Pitch", anchor=tk.W, variable=RunPitch)
     Pitch_CheckBox.grid(row=9, column=1, columnspan=1)
-    AcousticsRunButton = tk.Button(AcousticsFrame, text="Run", command=lambda: AcousticsFeaturesOneFile())
+    AcousticsRunButton = tk.Button(AcousticsMainFrameSingle, text="Run", command=lambda: AcousticsFeaturesOneFile())
     AcousticsRunButton.grid(row=10, column=1)
 
     ### Multiple File Acoustic Features Window ###
-    MultiAcousticsFrame = tk.Frame()
-    notebook.add(MultiAcousticsFrame, text="Acoustic Features - Multiple Files")
+    #MultiAcousticsFrame = tk.Frame()
+    #notebook.add(MultiAcousticsFrame, text="Acoustic Features - Multiple Files")
 
-    MultiAcousticsFileExplorer = tk.Button(MultiAcousticsFrame, text="Find Segmentation File",command=lambda: MultiAcousticsFileExplorerFunction())
+    AcousticsMainFrameMulti = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    AcousticsNotebook.add(AcousticsMainFrameMulti, text="Multiple Files")
+    AcousticsSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    AcousticsNotebook.add(AcousticsSettingsFrame, text="Advanced Settings")
+    AcousticsInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    AcousticsNotebook.add(AcousticsInfoFrame, text="Info")
+
+
+    MultiAcousticsFileExplorer = tk.Button(AcousticsMainFrameMulti, text="Find Segmentation File",command=lambda: MultiAcousticsFileExplorerFunction())
     MultiAcousticsFileExplorer.grid(row=1, column=0)
-    MultiAcousticsText = tk.Label(MultiAcousticsFrame, text="Please select which acoustics features you would like to analyze:")
+    MultiAcousticsText = tk.Label(AcousticsMainFrameMulti, text="Please select which acoustics features you would like to analyze:")
     MultiAcousticsText.grid(row=0, column=0, columnspan=3)
 
     global MultiRunGoodness
@@ -824,27 +1060,27 @@ try:
             for checkbox in MultiButtonNameList:
                 checkbox.set(0)
 
-    MultiCheckAll_CheckBox = tk.Checkbutton(MultiAcousticsFrame, text='Select All', variable=MultiCheckAll,
+    MultiCheckAll_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text='Select All', variable=MultiCheckAll,
                                        command=lambda: MultiCheckAllBoxes(MultiCheckAll))
     MultiCheckAll_CheckBox.grid(row=2, column=1, columnspan=1)
-    MultiGoodness_CheckBox = tk.Checkbutton(MultiAcousticsFrame, text="Goodness", anchor=tk.W, variable=MultiRunGoodness)
+    MultiGoodness_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text="Goodness", anchor=tk.W, variable=MultiRunGoodness)
     MultiGoodness_CheckBox.grid(row=3, column=1, columnspan=1)
-    MultiMean_frequency_CheckBox = tk.Checkbutton(MultiAcousticsFrame, text="Mean Frequency", anchor=tk.W,
+    MultiMean_frequency_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text="Mean Frequency", anchor=tk.W,
                                              variable=MultiRunMean_frequency)
     MultiMean_frequency_CheckBox.grid(row=4, column=1, columnspan=1)
-    MultiEntropy_CheckBox = tk.Checkbutton(MultiAcousticsFrame, text="Entropy", anchor=tk.W, variable=MultiRunEntropy)
+    MultiEntropy_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text="Entropy", anchor=tk.W, variable=MultiRunEntropy)
     MultiEntropy_CheckBox.grid(row=5, column=1, columnspan=1)
-    MultiAmplitude_CheckBox = tk.Checkbutton(MultiAcousticsFrame, text="Amplitude", anchor=tk.W, variable=MultiRunAmplitude)
+    MultiAmplitude_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text="Amplitude", anchor=tk.W, variable=MultiRunAmplitude)
     MultiAmplitude_CheckBox.grid(row=6, column=1, columnspan=1)
-    MultiAmplitude_modulation_CheckBox = tk.Checkbutton(MultiAcousticsFrame, text="Amplitude Modulation", anchor=tk.W,
+    MultiAmplitude_modulation_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text="Amplitude Modulation", anchor=tk.W,
                                                    variable=MultiRunAmplitude_modulation)
     MultiAmplitude_modulation_CheckBox.grid(row=7, column=1, columnspan=1)
-    MultiFrequency_modulation_CheckBox = tk.Checkbutton(MultiAcousticsFrame, text="Frequency Modulation", anchor=tk.W,
+    MultiFrequency_modulation_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text="Frequency Modulation", anchor=tk.W,
                                                    variable=MultiRunFrequency_modulation)
     MultiFrequency_modulation_CheckBox.grid(row=8, column=1, columnspan=1)
-    MultiPitch_CheckBox = tk.Checkbutton(MultiAcousticsFrame, text="Pitch", anchor=tk.W, variable=MultiRunPitch)
+    MultiPitch_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text="Pitch", anchor=tk.W, variable=MultiRunPitch)
     MultiPitch_CheckBox.grid(row=9, column=1, columnspan=1)
-    MultiAcousticsRunButton = tk.Button(MultiAcousticsFrame, text="Run", command=lambda: AcousticsFeaturesManyFiles())
+    MultiAcousticsRunButton = tk.Button(AcousticsMainFrameMulti, text="Run", command=lambda: AcousticsFeaturesManyFiles())
     MultiAcousticsRunButton.grid(row=10, column=1)
 
     #SegmentationHelpButton = tk.Button(SegmentationFrame, text="Help", command= lambda:HelpButton)
@@ -852,20 +1088,110 @@ try:
 
     SyntaxFrame = tk.Frame(gui)
     notebook.add(SyntaxFrame, text="Syntax")
-    SyntaxFileButton = tk.Button(SyntaxFrame, text="Select Labeling File", command=lambda:SyntaxFileExplorer())
+
+    SyntaxMainFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    SyntaxNotebook = ttk.Notebook(SyntaxFrame)
+    SyntaxNotebook.grid(row=1)
+    SyntaxNotebook.add(SyntaxMainFrame, text="Home")
+    SyntaxSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    SyntaxNotebook.add(SyntaxSettingsFrame, text="Advanced Settings")
+    SyntaxInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    SyntaxNotebook.add(SyntaxInfoFrame, text="Info")
+
+    SyntaxFileButton = tk.Button(SyntaxMainFrame, text="Select Labeling File", command=lambda:SyntaxFileExplorer())
     SyntaxFileButton.grid(row=1,column=0)
-    SyntaxRunButton = tk.Button(SyntaxFrame, text="Run", command=lambda: SyllableSyntax())
+    SyntaxRunButton = tk.Button(SyntaxMainFrame, text="Run", command=lambda: SyllableSyntax())
     SyntaxRunButton.grid(row=4)
-    SyntaxBirdID = tk.Entry(SyntaxFrame, fg="grey", font=("Arial",15), justify="center")
+    SyntaxBirdID = tk.Entry(SyntaxMainFrame, fg="grey", font=("Arial",15), justify="center")
     SyntaxBirdID.insert(0, "Bird ID")
     SyntaxBirdID.bind("<FocusIn>", syntax_focus_in)
     SyntaxBirdID.bind("<FocusOut>", syntax_focus_out)
     SyntaxBirdID.grid(row=2)
     global DropCalls
     DropCalls = IntVar()
-    DropCallsCheckbox = tk.Checkbutton(SyntaxFrame, text= "Drop Calls", variable=DropCalls)
+    DropCallsCheckbox = tk.Checkbutton(SyntaxMainFrame, text= "Drop Calls", variable=DropCalls)
     DropCallsCheckbox.grid(row=3)
 
+
+    ### Plain Spectrogram Generation - Whole File ###
+    PlainSpectro = tk.Frame(gui)
+    notebook.add(PlainSpectro, text="Plain Spectrograms")
+    
+    PlainMainFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    PlainNotebook = ttk.Notebook(PlainSpectro)
+    PlainNotebook.grid(row=1)
+    PlainNotebook.add(PlainMainFrame, text="Whole Folder")
+
+    
+    PlainFileExplorer = tk.Button(PlainMainFrame, text="Select Folder", command=lambda: FindPlainSpectrograms())
+    PlainFileExplorer.grid(row=1, column=0)
+    PlainSpectroRun = tk.Button(PlainMainFrame, text="Create Blank Spectrograms", command=lambda:PrintPlainSpectrograms())
+    PlainSpectroRun.grid(row=2, column=0, columnspan=2)
+
+    ### Plain Spectrogram Generation - Selected Files ###
+    PlainSpectroAlt= tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    PlainNotebook.add(PlainSpectroAlt, text="Selected Files")
+    PlainFileExplorerAlt = tk.Button(PlainSpectroAlt, text="Select Files", command=lambda: FindPlainSpectrogramsAlt())
+    PlainFileExplorerAlt.grid(row=1, column=0)
+    PlainSpectroRunAlt = tk.Button(PlainSpectroAlt, text="Create Blank Spectrograms",
+                                command=lambda: PrintPlainSpectrogramsAlt())
+    PlainSpectroRunAlt.grid(row=2, column=0, columnspan=2)
+    PlainSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    PlainNotebook.add(PlainSettingsFrame, text="Advanced Settings")
+    PlainInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    PlainNotebook.add(PlainInfoFrame, text="Info")
+    '''
+    def BadFileTesting():
+        def make_spec2(syll_wav, hop_length, win_length, n_fft, amin, ref_db, min_level_db):
+            spectrogram = librosa.stft(syll_wav, hop_length=hop_length, win_length=win_length, n_fft=n_fft)
+            spectrogram_db = librosa.amplitude_to_db(np.abs(spectrogram), amin=amin, ref=ref_db)
+
+            # normalize
+            S_norm = np.clip((spectrogram_db - min_level_db) / -min_level_db, 0, 1)
+
+            return S_norm
+        ############################################
+        amin = 1e-5
+        ref_db = 20
+        min_level_db = -28
+        win_length = 512  # the AVGN default is based on ms duration and sample rate, and it 441.
+        hop_length = 128  # the AVGN default is based on ms duration and sample rate, and it is 88.
+        n_fft = 512
+        K = 10
+        min_cluster_prop = 0.04
+        embedding_dim = 2
+        #############################################
+        # load segmentations
+        predictions_reformat = pd.read_csv('C:/Users/ethan/Desktop/169/B651-0.1~0.1_seg_table.csv')
+        BadSongPath = 'C:/Users/ethan/Desktop/Bad Song File - B651/B651_44571.26718440_1_10_7_25_18.wav'
+        # Find any syllables with a duration less than 0.025s, and add on 0.01ms before the onset and 0.01ms after the offset
+        predictions_reformat['onsets'][predictions_reformat['offsets'] - predictions_reformat['onsets'] < 0.025] = \
+        predictions_reformat['onsets'] - 0.01
+
+        segmentations = predictions_reformat
+
+        # sometimes this padding can create negative onset times, which will cause errors.
+        # correct this by setting any onsets <0 to 0.
+        segmentations.onsets = segmentations.where(segmentations.onsets > 0, 0).onsets
+
+        # Add syllable audio to dataframe
+        syllable_dfs = pd.DataFrame()
+
+        file_path = BadSongPath
+        song = dataloading.SongFile(file_path)
+        song.bandpass_filter(100, 15000)
+
+        syllable_df = segmentations[segmentations['files'] == song_file]
+
+        # this section is based on avgn.signalprocessing.create_spectrogram_dataset.get_row_audio()
+        syllable_df["audio"] = [song.data[int(st * song.sample_rate): int(et * song.sample_rate)]
+                                for st, et in zip(syllable_df.onsets.values, syllable_df.offsets.values)]
+        syllable_dfs = pd.concat([syllable_dfs, syllable_df])
+    '''
+    #print(ttk.Style().theme_names())
+    ttk.Style().theme_use("clam")
+
+    #BadFileTesting = tk.Button(LabelingMainFrame, text="Test Bad File", BadFileTesting)
 
     gui.mainloop()
 
