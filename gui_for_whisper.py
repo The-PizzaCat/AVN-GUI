@@ -7,7 +7,6 @@
 
 # Fixes error about no torch module found: conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
 
-
 '''
 Updates to Add:
  - #DONE# Feature to print all spectrograms in a folder without any overlay (plain)
@@ -35,13 +34,12 @@ try:
     import glob
     import re
     import pandas as pd
-
     pd.options.mode.chained_assignment = None
     import librosa
     # import shutil
     import os
     import time
-
+    import datetime
 
     # import customtkinter
     # from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -59,13 +57,11 @@ try:
             BirdIDText.delete(0, tk.END)
             BirdIDText.config(fg='black')
 
-
     def handle_focus_out(_):
         if BirdIDText.get() == "":
             BirdIDText.delete(0, tk.END)
             BirdIDText.config(fg='grey')
             BirdIDText.insert(0, "Bird ID")
-
 
     def FileExplorerFunction():
         global song_folder
@@ -81,7 +77,6 @@ try:
             BirdIDText.config(fg='black')
             BirdIDText.insert(0, str(pattern.search(song_folder).group()))
             Bird_ID = str(pattern.search(song_folder).group())
-
 
     def SegmentButtonClick():  ### This function has been modified to use Whisper via cpu
         SegmentingProgressLabel = tk.Label(SegmentationFrame, text="Segmenting...", font=("Arial", 10), justify=CENTER)
@@ -101,215 +96,166 @@ try:
         num_trials = 3
 
         import sys
-        sys.path.insert(0, 'C:/Users/RobertsLab/Desktop/WhisperSeg-master')
+        cwd = os.getcwd()
+        WhisperDir = os.path.join(cwd, "WhisperSeg-master")
+        sys.path.insert(0, str(WhisperDir))
 
         from model import WhisperSegmenterFast
-        segmenter = WhisperSegmenterFast("nccratliri/whisperseg-large-ms-ct2", device="cuda")
+        global SegmentationStyle_Var
+        if SegmentationStyle_Var.get() == 0: # Segmentation style is CPU
+            segmenter = WhisperSegmenterFast("nccratliri/whisperseg-large-ms-ct2", device="cpu")
+        elif SegmentationStyle_Var.get() == 1: # Segmentation style is GPU
+            segmenter = WhisperSegmenterFast("nccratliri/whisperseg-large-ms-ct2", device="cuda")
 
         # get list of files to segment
         song_folder_path = song_folder
 
-        all_songs = glob.glob(song_folder_path + "/**/*.wav", recursive=True)
-        # SubfolderList = []
-        # for song in all_songs:
-        #     temp_dir = ""
-        #     dirs = song[len(song_folder)-1:].split("\\")
-        #     for d in dirs[:-1]:
-        #         temp_dir = temp_dir+d
-        #     SubfolderList.append(d)
-        # global SubfoldersPresent
-        # if len(np.unique(SubfolderList)) > 1:
-        #     SubfoldersPresent = True
-        # else:
-        #     SubfoldersPresent = False
+        # Create output folder -- this will be used by all modules later on
+        try: # Makes output folder if it doesn't exist already
+            OutputPath = os.path.join(song_folder_path, "GUI_Output")
+            os.mkdir(OutputPath)
+        except: pass # if output folder already exists, the above code raises an error and is ignored
 
-        # initialize empty dataframe to store segments
-        full_seg_table = pd.DataFrame()
-
-        # loop over each file in folder
-        Progress_Var = IntVar()
-        Progress_Var.set(0)
-        ProgressBar = ttk.Progressbar(SegmentationFrame, variable=Progress_Var, maximum=len(all_songs))
-        ProgressBar.grid()
-        time.sleep(0.1)
-        for i, song in enumerate(all_songs):
-            # load audio
-            audio, __ = librosa.load(song, sr=sr)
-            # segment file
-            prediction = segmenter.segment(audio, sr=sr, min_frequency=min_frequency, spec_time_step=spec_time_step,
-                                           min_segment_length=min_segment_length, eps=eps, num_trials=num_trials)
-            # format segmentation as dataframe
-            curr_prediction_df = pd.DataFrame(prediction)
-            # add file name to dataframe
-            song_name = song.split("\\")[-1]
-            curr_prediction_df['file'] = song_name
-            # add full file directory to dataframe ### Added by Ethan ###
-            curr_prediction_df['directory'] = song[:-(len(song_name))]
-            # add current file's segments to full_seg_table
-            full_seg_table = pd.concat([full_seg_table, curr_prediction_df])
-            Progress_Var.set(i)
-            ProgressBar.update()
-            time.sleep(0.1)
-
-        SegmentingProgressLabel.config(text="Segmentation Complete!")
-        ProgressBar.destroy()
-        time.sleep(1)
-        # save full_seg_table
+        # Create folder for segmentation output within parent output folder
         try:
-            full_seg_table.to_csv(str(song_folder) + str(Bird_ID) + "_wseg.csv")
-            SegmentingProgressLabel.config(text="Successfully Saved Segmentation Data!")
-            full_seg_table = None
-            prediction = None
-        except:
-            SegmentingProgressLabel.config(text="Failed to Save Segmentation Data")
+            OutputPath = os.path.join(song_folder_path+"GUI_Output/", "Segmentations")
+            os.mkdir(OutputPath)
+        except: pass
 
-        SegmentingProgressLabel.update()
+        global SplitSegmentations
+        print(SplitSegmentations.get())
+        if SplitSegmentations.get() == 0:
+            all_songs = glob.glob(song_folder_path + "/**/*.wav", recursive=True)
 
+            # initialize empty dataframe to store segments
+            full_seg_table = pd.DataFrame()
 
-    '''
-    def MoreInfo(Event):
-        # print(Event.widget)
-        if str(Event.widget) == ".!frame15.!button2":  # win_length
-            AcousticSettingsDialog.config(text="Length of window over which to calculate each \n feature in samples")
-            AcousticsSettingsDialogTitle.config(text='win_length')
-        if str(Event.widget) == ".!frame15.!button4":  # hop_length
-            AcousticSettingsDialog.config(text="Number of samples to advance between windows")
-            AcousticsSettingsDialogTitle.config(text='hop_length')
-        if str(Event.widget) == ".!frame15.!button6":  # n_fft
-            AcousticSettingsDialog.config(text="Length of the transformed axis of the output. \n If n is smaller than " \
-                                               "the length of \n the win_length, the input is cropped")
-            AcousticsSettingsDialogTitle.config(text='n_fft')
-        if str(Event.widget) == ".!frame15.!button8":  # max_F0
-            AcousticSettingsDialog.config(text="Maximum allowable fundamental frequency \n of signal in Hz")
-            AcousticsSettingsDialogTitle.config(text='max_F0')
-        if str(Event.widget) == ".!frame15.!button10":  # min_frequency
-            AcousticSettingsDialog.config(text="Lower frequency cutoff in Hz. Only power at \n frequencies above " \
-                                               "this will contribute to \n feature calculation")
-            AcousticsSettingsDialogTitle.config(text='min_frequency')
-        if str(Event.widget) == ".!frame15.!button12":  # freq_range
-            AcousticSettingsDialog.config(text="Proportion of power spectrum \n frequency bins to consider")
-            AcousticsSettingsDialogTitle.config(text='freq_range')
-        if str(Event.widget) == ".!frame15.!button14":  # baseline_amp
-            AcousticSettingsDialog.config(text="Baseline amplitude used to \n calculate amplitude in dB")
-            AcousticsSettingsDialogTitle.config(text='baseline_amp')
-        if str(Event.widget) == ".!frame15.!button16":  # fmax_yin
-            AcousticSettingsDialog.config(text="Maximum frequency in Hz used to \n estimate fundamental frequency " \
-                                               "with \n the YIN algorithm")
-            AcousticsSettingsDialogTitle.config(text='fmax_yin')
+            # loop over each file in folder
+            Progress_Var = IntVar()
+            Progress_Var.set(0)
+            ProgressBar = ttk.Progressbar(SegmentationFrame, variable=Progress_Var, maximum=len(all_songs))
+            ProgressBar.grid()
+            time.sleep(0.1)
+            for i, song in enumerate(all_songs):
+                # load audio
+                audio, __ = librosa.load(song, sr=sr)
+                # segment file
+                prediction = segmenter.segment(audio, sr=sr, min_frequency=min_frequency, spec_time_step=spec_time_step,
+                                               min_segment_length=min_segment_length, eps=eps, num_trials=num_trials)
+                # format segmentation as dataframe
+                curr_prediction_df = pd.DataFrame(prediction)
+                # add file name to dataframe
+                song_name = song.split("\\")[-1]
+                curr_prediction_df['file'] = song_name
+                # add full file directory to dataframe ### Added by Ethan ###
+                curr_prediction_df['directory'] = song[:-(len(song_name))]
+                # add current file's segments to full_seg_table
+                full_seg_table = pd.concat([full_seg_table, curr_prediction_df])
+                Progress_Var.set(i)
+                ProgressBar.update()
+                time.sleep(0.1)
 
-        AcousticSettingsDialog.update()
-        ##############################################################################3
-        if str(Event.widget) == ".!frame8.!button2":  # bandpass_lower_cutoff
-            LabelingSpectrogramDialog.config(text="Lower cutoff frequency in Hz for a hamming window \n" \
-                                                  "bandpass filter applied to the audio data before generating\n" \
-                                                  "spectrograms. Frequencies below this value will be filtered out")
-        if str(Event.widget) == ".!frame8.!button4":  # bandpass_upper_cutoff
-            LabelingSpectrogramDialog.config(text="Upper cutoff frequency in Hz for a hamming window bandpass\n" \
-                                                  " filter applied to the audio data before generating spectrograms. \n" \
-                                                  "Frequencies above this value will be filtered out")
-        if str(Event.widget) == ".!frame8.!button6":  # a_min
-            LabelingSpectrogramDialog.config(text="Minimum amplitude threshold in the spectrogram. Values \n" \
-                                                  "lower than a_min will be set to a_min before conversion to decibels")
-        if str(Event.widget) == ".!frame8.!button8":  # ref_db
-            LabelingSpectrogramDialog.config(text="When making the spectrogram and converting it from amplitude \n" \
-                                                  "to db, the amplitude is scaled relative to this reference: \n" \
-                                                  "20 * log10(S/ref_db) where S represents the spectrogram with amplitude values")
-        if str(Event.widget) == ".!frame8.!button10":  # min_level_db
-            LabelingSpectrogramDialog.config(
-                text="When making the spectrogram, once the amplitude has been converted \n" \
-                     "to decibels, the spectrogram is normalized according to this value: \n" \
-                     "(S - min_level_db)/-min_level_db where S represents the spectrogram \n" \
-                     "in db. Any values of the resulting operation which are <0 are set to \n" \
-                     "0 and any values that are >1 are set to 1")
-        if str(Event.widget) == ".!frame8.!button12":  # n_fft
-            LabelingSpectrogramDialog.config(text="When making the spectrogram, this is the length of the windowed \n" \
-                                                  "signal after padding with zeros. The number of rows spectrogram is\n" \
-                                                  " \"(1+n_fft/2)\". The default value,\"n_fft=512\" samples, \n" \
-                                                  "corresponds to a physical duration of 93 milliseconds at a sample \n" \
-                                                  "rate of 22050 Hz, i.e. the default sample rate in librosa. This value \n" \
-                                                  "is well adapted for music signals. However, in speech processing, the \n" \
-                                                  "recommended value is 512, corresponding to 23 milliseconds at a sample\n" \
-                                                  " rate of 22050 Hz. In any case, we recommend setting \"n_fft\" to a \n" \
-                                                  "power of two for optimizing the speed of the fast Fourier transform (FFT) algorithm")
-        if str(Event.widget) == ".!frame8.!button14":  # win_length
-            LabelingSpectrogramDialog.config(
-                text="When making the spectrogram, each frame of audio is windowed by a window \n" \
-                     "of length \"win_length\" and then padded with zeros to match \"n_fft\".\n" \
-                     " Padding is added on both the left- and the right-side of the window so\n" \
-                     " that the window is centered within the frame. Smaller values improve \n" \
-                     "the temporal resolution of the STFT (i.e. the ability to discriminate \n" \
-                     "impulses that are closely spaced in time) at the expense of frequency \n" \
-                     "resolution (i.e. the ability to discriminate pure tones that are closely\n" \
-                     " spaced in frequency). This effect is known as the time-frequency \n" \
-                     "localization trade-off and needs to be adjusted according to the \n" \
-                     "properties of the input signal")
-        if str(Event.widget) == ".!frame8.!button16":  # hop_length
-            LabelingSpectrogramDialog.config(
-                text="The number of audio samples between adjacent windows when creating \n" \
-                     "the spectrogram. Smaller values increase the number of columns in \n" \
-                     "the spectrogram without affecting the frequency resolution")
-        if str(Event.widget) == ".!frame8.!button18":  # max_spec_size
-            LabelingSpectrogramDialog.config(text="Maximum frequency in Hz used to \n estimate fundamental frequency " \
-                                                  "with \n the YIN algorithm")
-        if str(Event.widget) == ".!frame9.!button2":  # n_neighbors
-            LabelingUMAPDialog.config(
-                text="The size of local neighborhood (in terms of number of neighboring sample points)\n" \
-                     " used for manifold approximation. Larger values result in more global views \n" \
-                     "of the manifold, while smaller values result in more local data being \n" \
-                     "preserved. In general values should be in the range 2 to 100")
-        if str(Event.widget) == ".!frame9.!button4":  # n_components
-            LabelingUMAPDialog.config(text="The dimension of the space to embed into. This defaults to 2 to provide \n" \
-                                           "easy visualization, but can reasonably be set to any integer value \n" \
-                                           "in the range 2 to 100")
-        if str(Event.widget) == ".!frame9.!button6":  # min_dist
-            LabelingUMAPDialog.config(text="The effective minimum distance between embedded points. \n" \
-                                           "Smaller values will result in a more clustered/clumped \n" \
-                                           "embedding where nearby points on the manifold are drawn \n" \
-                                           "closer together, while larger values will result on a more \n" \
-                                           "even dispersal of points. The value should be set relative to \n" \
-                                           "the \"spread\" value, which determines the scale at which \n" \
-                                           "embedded points will be spread out")
-        if str(Event.widget) == ".!frame9.!button8":  # spread
-            LabelingUMAPDialog.config(text="The effective scale of embedded points. In combination with \n" \
-                                           "\"min_dist\" this determines how clustered/clumped the embedded points are")
-        if str(Event.widget) == ".!frame9.!button10":  # metric
-            LabelingUMAPDialog.config(text="The metric to use to compute distances in high dimensional space")
-        if str(Event.widget) == ".!frame9.!button12":  # random_state
-            LabelingUMAPDialog.config(text="If specified, random_state is the seed used by the random \n" \
-                                           "number generator. Specifying a random state is the only way \n" \
-                                           "to ensure that you can reproduce an identical UMAP with the \n" \
-                                           "same data set multiple times")
-        if str(Event.widget) == ".!frame10.!button2":
-            LabelingClusterDialog.config(text='Minimum fraction of syllables that can constitute a cluster. \n'
-                                              'For example, in a dataset of 1000 syllables, there need to be \n'
-                                              'at least 40 instances of a particular syllable for that to be \n'
-                                              'considered a cluster. Single linkage splits that contain fewer \n'
-                                              'points than this will be considered points “falling out” of a \n'
-                                              'cluster rather than a cluster splitting into two new clusters \n'
-                                              'when performing HDBSCAN clustering')
-        if str(Event.widget) == ".!frame10.!button4":
-            LabelingClusterDialog.config(text='The number of samples in a neighbourhood for a point to be \n'
-                                              'considered a core point in HDBSCAN clustering. The larger the \n'
-                                              'value of \"min_samples\" you provide, the more conservative \n'
-                                              'the clustering – more points will be declared as noise, and \n'
-                                              'clusters will be restricted to progressively more dense areas')
-        if str(Event.widget) == ".!frame19.!button2":
-            SyntaxDialog.config(text="Minimum duration in seconds for a gap between syllables \n"
-                                     "to be considered syntactically relevant. This value should \n"
-                                     "be selected such that gaps between syllables in a bout are \n"
-                                     "shorter than min_gap, but gaps between bouts are longer than min_gap")
+            SegmentingProgressLabel.config(text="Segmentation Complete!")
+            ProgressBar.destroy()
+            time.sleep(1)
+            # save full_seg_table
+            try:
+                full_seg_table.to_csv(song_folder_path+"GUI_Output/Segmentations/" + str(Bird_ID) + "_wseg" + "_" + str(datetime.datetime.now().year)
+                + "_" + str(datetime.datetime.now().month)+ "_" + str(datetime.datetime.now().day)+ "___" + str(datetime.datetime.now().hour)+
+                                      "_" + str(datetime.datetime.now().minute)+ "_" + str(datetime.datetime.now().second)+".csv")
+                SegmentingProgressLabel.config(text="Successfully Saved Segmentation Data!")
+                full_seg_table = None
+                prediction = None
+            except:
+                SegmentingProgressLabel.config(text="Failed to Save Segmentation Data")
 
-    def LessInfo(Event):
-        if "frame15" in str(Event.widget):
-            AcousticSettingsDialog.config(text="")
-            AcousticsSettingsDialogTitle.config(text="")
-        if "frame8" in str(Event.widget):
-            LabelingSpectrogramDialog.config(text="")
-        if "frame9" in str(Event.widget):
-            LabelingUMAPDialog.config(text="")
-        if "frame10" in str(Event.widget):
-            LabelingClusterDialog.config(text="")
-    '''
+            SegmentingProgressLabel.update()
+        elif SplitSegmentations.get() == 1:
+            all_songs = glob.glob(song_folder_path + "/**/*.wav", recursive=True)
+
+            # Gathers all subfolders that contain .wav files
+            song_directories = []
+            for song in all_songs:
+                song = song.replace("\\","/")
+                song = song.split("/")[:-1]
+                song_merged = ""
+                for x in song:
+                    song_merged = song_merged+x+"/"
+                if song_merged not in song_directories:
+                    song_directories.append(song_merged)
+
+            print(song_directories)
+            # Runs segmentations for each subfolder
+            for directory in song_directories:
+                print(directory)
+                # initialize empty dataframe to store segments
+                full_seg_table = pd.DataFrame()
+
+                # loop over each file in folder
+                try:
+                    Progress_Var.set(0)
+                except:
+                    Progress_Var = IntVar()
+                    Progress_Var.set(0)
+                    ProgressBar = ttk.Progressbar(SegmentationFrame, variable=Progress_Var, maximum=len(all_songs))
+                    ProgressBar.grid()
+                try:
+                    ProgressBarLabel.destroy()
+                except: pass
+                ProgressBarLabel = tk.Label(SegmentationFrame, text="Processing Folder "+str(song_directories.index(directory)+1)+ " of "+str(len(song_directories)))
+                ProgressBarLabel.grid()
+                time.sleep(0.1)
+
+                all_songs_sub = glob.glob(directory + "/**.wav")
+                for i, song in enumerate(all_songs_sub):
+                    # load audio
+                    audio, __ = librosa.load(song, sr=sr)
+                    # segment file
+                    prediction = segmenter.segment(audio, sr=sr, min_frequency=min_frequency, spec_time_step=spec_time_step,
+                                                   min_segment_length=min_segment_length, eps=eps, num_trials=num_trials)
+                    # format segmentation as dataframe
+                    curr_prediction_df = pd.DataFrame(prediction)
+                    # add file name to dataframe
+                    song_name = song.split("\\")[-1]
+                    curr_prediction_df['file'] = song_name
+                    # add full file directory to dataframe ### Added by Ethan ###
+                    curr_prediction_df['directory'] = song[:-(len(song_name))]
+                    # add current file's segments to full_seg_table
+                    full_seg_table = pd.concat([full_seg_table, curr_prediction_df])
+                    Progress_Var.set(i)
+                    ProgressBar.update()
+                    time.sleep(0.1)
+
+                # save full_seg_table
+                try:
+                    directory_corrected = ""
+                    for a in directory.split("/"):
+                        directory_corrected = directory_corrected + a + "-"
+                    directory_corrected.replace(":","")
+                    print(directory_corrected)
+                    print(song_folder_path)
+                    print("+-+-+-+-+-")
+                    # print(full_seg_table)
+                    # print(song_folder_path+"GUI_Output/Segmentations/" + str(Bird_ID) + "_seg_" + str(directory_corrected) + "_" + str(datetime.datetime.now().year)
+                                    #+ "_" + str(datetime.datetime.now().month)+ "_" + str(datetime.datetime.now().day)+ "___" + str(datetime.datetime.now().hour)+
+                                    #  "_" + str(datetime.datetime.now().minute)+ "_" + str(datetime.datetime.now().second)+"_wseg.csv")
+                    full_seg_table.to_csv(song_folder_path+"GUI_Output/Segmentations/" + str(Bird_ID) + "_seg_" + str(directory.split("/")[-1])+"_wseg.csv")
+                    print("-/-/-/-/-/-/-/-/")
+                    SegmentingProgressLabel.config(text="Successfully Saved Segmentation Data!")
+                    full_seg_table = None
+                    prediction = None
+                except:
+                    print("Failed to Save Segmentation Data")
+                    SegmentingProgressLabel.config(text="Failed to Save Segmentation Data")
+                    SegmentingProgressLabel.update()
+
+                SegmentingProgressLabel.update()
+
+            SegmentingProgressLabel.config(text="Segmentation Complete!")
+            ProgressBar.destroy()
+            time.sleep(1)
+        else:
+            print("Error!")
 
     ### Initialize gui ###
     gui = tk.Tk()
@@ -342,7 +288,7 @@ try:
     BirdIDText.insert(0, "Bird ID")
     BirdIDText.bind("<FocusIn>", handle_focus_in)
     BirdIDText.bind("<FocusOut>", handle_focus_out)
-    BirdIDText.grid(row=2, column=1, sticky="w")
+    BirdIDText.grid(row=2, column=1, sticky="w", columnspan=2)
 
     BirdIDLabel = tk.Label(SegmentationMainFrame, text="Bird ID:")
     BirdIDLabel.grid(row=2, column=0)
@@ -350,8 +296,22 @@ try:
     FileExplorer = tk.Button(SegmentationMainFrame, text="Find Folder", command=lambda: FileExplorerFunction())
     FileExplorer.grid(row=1, column=0)
 
+    global SplitSegmentations
+    SplitSegmentations = IntVar()
+    Split_Segmentations = tk.Checkbutton(SegmentationMainFrame, text="Split Segments", variable=SplitSegmentations, onvalue=1, offvalue=0)
+    Split_Segmentations.grid(row=6, column=1)
+
+    SegmentationStyle_Label = tk.Label(SegmentationMainFrame, text="Segmentation Style:")
+    SegmentationStyle_Label.grid(row=7, column=0)
+    global SegmentationStyle_Var
+    SegmentationStyle_Var = tk.IntVar()
+    SegmentationStyle_CPU = tk.Radiobutton(SegmentationMainFrame, text="CPU", variable=SegmentationStyle_Var, value=0)
+    SegmentationStyle_CPU.grid(row=7, column=1)
+    SegmentationStyle_GPU = tk.Radiobutton(SegmentationMainFrame, text="GPU", variable=SegmentationStyle_Var, value=1)
+    SegmentationStyle_GPU.grid(row=7, column=2)
+
     SegmentButton = tk.Button(SegmentationMainFrame, text="Segment!", command=lambda: SegmentButtonClick())
-    SegmentButton.grid(row=6, columnspan=2)
+    SegmentButton.grid(row=8, column=1)
 
     ttk.Style().theme_use("clam")
     gui.mainloop()
