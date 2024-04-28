@@ -187,6 +187,11 @@ try:
                     global TimingInput_Text
                     TimingInput_Text.config(text=TimingInput)
                     TimingInput_Text.update()
+                    if pattern.search(TimingInput) != None:
+                        Timing_BirdID.delete(0, tk.END)
+                        Timing_BirdID.config(fg='black')
+                        Timing_BirdID.insert(0, str(pattern.search(TimingInput).group()))
+                        Timing_BirdID.update()
             if Type == "Output":
                 TimingOutput = filedialog.askdirectory()
                 if len(TimingOutput) > 0:
@@ -216,9 +221,10 @@ try:
                         ResetAcousticsOffset()
                         # Automatically finds Bird ID from file path, if possible, and enters into Bird ID field
                         if pattern.search(AcousticsDirectory.split("/")[-2]) != None:
-                            BirdIDText.delete(0, tk.END)
-                            BirdIDText.config(fg='black')
-                            BirdIDText.insert(0, str(pattern.search(AcousticsDirectory.split("/")[-2]).group()))
+                            pass
+                            # BirdIDText.delete(0, tk.END)
+                            # BirdIDText.config(fg='black')
+                            # BirdIDText.insert(0, str(pattern.search(AcousticsDirectory.split("/")[-2]).group()))
             if Type == "Output":
                 global AcousticsOutput_Text
                 OutputDir = filedialog.askdirectory()
@@ -330,7 +336,6 @@ try:
                 if len(OutputDir_temp) > 0:
                     LabelingExtra_Output_Text.config(text=OutputDir_temp)
                     LabelingExtra_Output_Text.update()
-
 
     def ResetAcousticsOffset():
         AcousticsOffset.delete(0,END)
@@ -631,7 +636,8 @@ try:
                             [LabelingSettingsMetadata, LabelingClustering_SettingsValues],
                             axis=1)
 
-                        LabelingSettingsMetadata.to_csv(OutputFolder + "/LabelingSettings_Metadata.csv")
+                        UMAP_Output = UMAP_Output.replace("_UMAP-Clusters.png", "LabelingSettings_Metadata.csv")
+                        LabelingSettingsMetadata.to_csv(UMAP_Output)
 
                         LabelingProgress_Bar.destroy()
                         LabelingProgress_Text.config(text="Labeling Complete!")
@@ -818,7 +824,7 @@ try:
                 plt.close(fig)
             print("Done!")
 
-    def AcousticsFeaturesOneFile():
+    def Acoustics_Interval():
         global ContCalc
         AcousticsProgress = tk.Label(AcousticsMainFrameSingle, text="Calculating Acoustics...")
         AcousticsProgress.grid(row=12, column=1)
@@ -858,8 +864,7 @@ try:
             AcousticsProgress.config(text="Acoustics Calculations Complete!")
             print(str(AcousticsOutput_Text.cget("text"))+"/")
         if ContCalc.get() == 1:
-            global AcousticsHarshidaInput
-            AllSongFiles = glob.glob(AcousticsHarshidaInput + "/**/*.wav", recursive=True)
+            AllSongFiles = glob.glob(str(AcousticsOutput_Text.cget("text")) + "/**/*.wav", recursive=True)
             #song_features = song_interval.calc_all_features(features=FeatureList)
             try:
                 os.makedirs(AcousticsOutput_Text.cget("text")+"/AcousticsOutput")
@@ -871,7 +876,7 @@ try:
                 song_interval = acoustics.SongInterval(song, onset=0, offset=None)
                 song_interval.save_features(out_file_path=str(AcousticsOutput_Text.cget("text"))+"/AcousticsOutput/",file_name=str((file.split("/")[-1][:-4]).split("\\")[-1]), features=FeatureList)
 
-    def AcousticsFeaturesManyFiles():
+    def Acoustics_Syllables():
         global MultiAcousticsDirectory
         global Bird_ID
 
@@ -891,6 +896,7 @@ try:
                 time.sleep(1)
 
                 syll_df = pd.read_csv(str(MultiAcousticsDirectory))
+                syll_df=syll_df.rename(columns={"onset":"onsets","offset":"offsets", "file":"files"})
                 global MultiAcousticsOutputDisplay
                 MultiAcousticsOutputDirectory_temp = MultiAcousticsOutputDisplay.cget("text")
                 try:
@@ -899,19 +905,26 @@ try:
                 except:
                     MultiAcousticsOutputDirectory = MultiAcousticsOutputDirectory_temp+"/Acoustics_WholeFolder/"
 
-                # Try below function, assuming BirdID is chosen, otherwise grab bird ID from directory and proceed
-                MultiAcousticsOutputDirectory = MultiAcousticsOutputDirectory + "/"
 
+                # MultiAcousticsOutputDirectory = MultiAcousticsOutputDirectory + "/"
+
+                MultiAcousticsDirectory2 = ""
+                for a in MultiAcousticsDirectory.split("/")[:-1]:
+                    MultiAcousticsDirectory2 = MultiAcousticsDirectory2+a+"/"
+                MultiAcousticsDirectory = MultiAcousticsDirectory2
+
+                # Try below function, assuming BirdID is chosen, otherwise grab bird ID from directory and proceed
                 try:
-                    acoustic_data = acoustics.AcousticData(Bird_ID=str(Bird_ID), syll_df=temp_syll_df, song_folder_path=directory,
+                    acoustic_data = acoustics.AcousticData(Bird_ID=str(Bird_ID), syll_df=syll_df, song_folder_path=MultiAcousticsDirectory,
                                                            win_length=int(win_length_entry_Acoustics.get()),hop_length= int(hop_length_entry_Acoustics.get()),
                                                            n_fft=int(n_fft_entry_Acoustics.get()), max_F0=int(max_F0_entry_Acoustics.get()),min_frequency=int(min_frequency_entry_Acoustics.get()),
-                                                           freq_range=int(freq_range_entry_Acoustics.get()),baseline_amp=int(baseline_amp_entry_Acoustics.get()),fmax_yin=int(fmax_yin_entry_Acoustics.get()))
+                                                           freq_range=float(freq_range_entry_Acoustics.get()),baseline_amp=int(baseline_amp_entry_Acoustics.get()),fmax_yin=int(fmax_yin_entry_Acoustics.get()))
                 except:
                     pattern = re.compile('(?i)[A-Z][0-9][0-9][0-9]')
-                    if pattern.search(MultiAcousticsDirectory.split("/")[-1]) != None:
-                        Bird_ID = str(pattern.search(MultiAcousticsDirectory.split("/")[-2]).group())
-                    acoustic_data = acoustics.AcousticData(Bird_ID=str(Bird_ID), syll_df=temp_syll_df, song_folder_path=directory)
+                    Bird_ID = str(pattern.search(MultiAcousticsDirectory).group())
+                    acoustic_data = acoustics.AcousticData(Bird_ID=str(Bird_ID), syll_df=syll_df, song_folder_path=MultiAcousticsDirectory,win_length=int(win_length_entry_Acoustics.get()),hop_length= int(hop_length_entry_Acoustics.get()),
+                                                           n_fft=int(n_fft_entry_Acoustics.get()), max_F0=int(max_F0_entry_Acoustics.get()),min_frequency=int(min_frequency_entry_Acoustics.get()),
+                                                           freq_range=float(freq_range_entry_Acoustics.get()),baseline_amp=int(baseline_amp_entry_Acoustics.get()),fmax_yin=int(fmax_yin_entry_Acoustics.get()))
 
                 FeatureList = []
                 if MultiRunGoodness.get() == 1:
@@ -948,7 +961,7 @@ try:
 
                 MultiAcousticsProgress.config(text="Acoustics Calculations Complete!")
 
-    def SyllableSyntax():
+    def Syntax():
         import avn.syntax as syntax
         import avn.plotting as plotting
         global SyntaxDirectory
@@ -960,26 +973,34 @@ try:
         syll_df = pd.read_csv(SyntaxFileDisplay.cget("text"))
         global syntax_data
         Bird_ID = ""
-        global SyntaxOutputDisplay
-        try:
-            SyntaxOutputFolder = SyntaxOutputDisplay.cget("text")+"/Syntax_"+SyntaxBirdID.get()+"_1"
-            os.makedirs(SyntaxOutputFolder)
-        except:
-            dir_list_temp = glob.glob(SyntaxOutputDisplay.cget("text")+"/Syntax_"+SyntaxBirdID.get()+"*")
-            dir_list = []
-            for dir in dir_list:
-                if ".csv" not in dir:
-                    dir_list.append(dir)
-            print(dir_list)
-            os.makedirs(SyntaxOutputDisplay.cget("text")+"/Syntax_"+SyntaxBirdID.get()+"_"+str(int(dir_list.replace("\\","/").split("_")[-1])+1))
-            SyntaxOutputFolder = SyntaxOutputDisplay.cget("text")+"/Syntax_"+SyntaxBirdID.get()+"_"+str(int(dir_list[-1][-1])+1)
+
         merged_syntax_data = pd.DataFrame()
+        Syntax_DirIndex = 0
         for directory in syll_df["directory"].unique():
-            Prev_Iters = glob.glob(SyntaxOutputFolder+ "/*.csv")
-            if Prev_Iters != []:
-                for file in Prev_Iters:
-                    if "temp" not in file:
-                        os.rename(file, file[:-4]+"_temp.csv")
+            Syntax_DirIndex+=1
+            global SyntaxOutputDisplay
+            try:
+                SyntaxOutputFolder = SyntaxOutputDisplay.cget("text") + "/Syntax_" + SyntaxBirdID.get() + "_Day"+str(Syntax_DirIndex)+"/"
+                os.makedirs(SyntaxOutputFolder)
+            except:
+                pass
+            # except:
+            #     dir_list_temp = glob.glob(SyntaxOutputDisplay.cget("text") + "/Syntax_" + SyntaxBirdID.get() + "*")
+            #     dir_list = []
+            #     for dir in dir_list:
+            #         if ".csv" not in dir:
+            #             dir_list.append(dir)
+            #     os.makedirs(SyntaxOutputDisplay.cget("text") + "/Syntax_" + SyntaxBirdID.get() + "_" + str(
+            #         int(dir_list.replace("\\", "/").split("_")[-1]) + 1))
+            #     SyntaxOutputFolder = SyntaxOutputDisplay.cget("text") + "/Syntax_" + SyntaxBirdID.get() + "_Day" + str(
+            #         int(dir_list[-1][-1]) + 1)
+            # Prev_Iters = glob.glob(SyntaxOutputFolder+ "/*.csv")
+            # if Prev_Iters != []:
+            #     for file in Prev_Iters:
+            #         if "temp" not in file:
+            #             os.rename(file, file[:-4]+"_temp.csv")
+
+            # Make dataframe for current directory
             syll_df_temp = syll_df[syll_df["directory"] == directory]
             syntax_data = syntax.SyntaxData(Bird_ID, syll_df_temp)
             dir_corrected = directory.replace("\\", "/").replace("RobertsLab","ethan")[:-1]
@@ -1008,43 +1029,43 @@ try:
             syntax_data.save_syntax_data(SyntaxOutputFolder)
             temp_file_list = []
             all_files_list = glob.glob(SyntaxOutputFolder+ "/*.csv")
-            print(all_files_list)
-            if len(all_files_list) > 0:
-                for file in all_files_list:
-                    if "temp" in file:
-                        temp_file_list.append(file)
-                    if "syll_df_temp.csv" in file:
-                        old_syll_df = file
-                    if "syll_df.csv" in file:
-                        new_syll_df = file
-                    if "syntax_analysis_metadata_temp.csv" in file:
-                        old_syntax_analysis_metadata = file
-                    if "syntax_analysis_metadata.csv" in file:
-                        new_syntax_analysis_metadata = file
-                    if "trans_mat_temp.csv" in file:
-                        old_trans_mat = file
-                    if "trans_mat.csv" in file:
-                        new_trans_mat = file
-                    if "trans_mat_prob_temp.csv" in file:
-                        old_trans_mat_prob = file
-                    if "trans_mat_prob.csv" in file:
-                        new_trans_mat_prob = file
 
-                merged_syll_df = pd.concat([old_syll_df, new_syll_df])
-                merged_syntax_analysis_metadata = pd.concat([old_syntax_analysis_metadata, new_syntax_analysis_metadata])
-                merged_trans_mat = pd.concat([old_trans_mat, new_trans_mat])
-                merged_trans_mat_prob = pd.concat([old_trans_mat_prob, new_trans_mat_prob])
-
-                for file in all_files_list:
-                    try:
-                        os.remove(file)
-                    except: pass
-
-                merged_syll_df.to_csv(SyntaxOutputFolder+"/Syntax_"+str(Bird_ID)+"_syll_df.csv")
-                merged_syntax_analysis_metadata.to_csv(SyntaxOutputFolder+"/Syntax_"+str(Bird_ID)+"_syntax_analysis_metadata.csv")
-                merged_trans_mat.to_csv(SyntaxOutputFolder+"/Syntax_"+str(Bird_ID)+"_trans_mat.csv")
-                merged_trans_mat_prob.to_csv(SyntaxOutputFolder+"/Syntax_"+str(Bird_ID)+"_trans_mat_prob.csv")
-            else:
+            # if len(all_files_list) > 0:
+            #     for file in all_files_list:
+            #         if "temp" in file:
+            #             temp_file_list.append(file)
+            #         if "syll_df_temp.csv" in file:
+            #             old_syll_df = file
+            #         if "syll_df.csv" in file:
+            #             new_syll_df = file
+            #         if "syntax_analysis_metadata_temp.csv" in file:
+            #             old_syntax_analysis_metadata = file
+            #         if "syntax_analysis_metadata.csv" in file:
+            #             new_syntax_analysis_metadata = file
+            #         if "trans_mat_temp.csv" in file:
+            #             old_trans_mat = file
+            #         if "trans_mat.csv" in file:
+            #             new_trans_mat = file
+            #         if "trans_mat_prob_temp.csv" in file:
+            #             old_trans_mat_prob = file
+            #         if "trans_mat_prob.csv" in file:
+            #             new_trans_mat_prob = file
+            #
+            #     merged_syll_df = pd.concat([old_syll_df, new_syll_df])
+            #     merged_syntax_analysis_metadata = pd.concat([old_syntax_analysis_metadata, new_syntax_analysis_metadata])
+            #     merged_trans_mat = pd.concat([old_trans_mat, new_trans_mat])
+            #     merged_trans_mat_prob = pd.concat([old_trans_mat_prob, new_trans_mat_prob])
+            #
+            #     for file in all_files_list:
+            #         try:
+            #             os.remove(file)
+            #         except: pass
+            try:
+                merged_syll_df.to_csv(SyntaxOutputFolder+"syll_df.csv")
+                merged_syntax_analysis_metadata.to_csv(SyntaxOutputFolder+"syntax_analysis_metadata.csv")
+                merged_trans_mat.to_csv(SyntaxOutputFolder+"trans_mat.csv")
+                merged_trans_mat_prob.to_csv(SyntaxOutputFolder+"trans_mat_prob.csv")
+            except:
                 syntax_data.save_syntax_data(SyntaxOutputFolder)
         SyntaxProgress.config(text="Complete!")
 
@@ -1054,7 +1075,7 @@ try:
             os.makedirs(PlainDirectory + "/Unlabeled Spectrograms")
         except: pass
         FileList = glob.glob(str(PlainDirectory) + "/*.wav")
-        PlainProgressLabel = tk.Label(PlainSpectro, text="Generating Spectrograms...")
+        PlainProgressLabel = tk.Label(PlainSpectrograms, text="Generating Spectrograms...")
         PlainProgressLabel.grid(row=3, column=1)
         f = 0
         for file in FileList:
@@ -1093,104 +1114,97 @@ try:
         Bird_ID = ""
         syll_df = syll_df.rename(
             columns={"onset": "onsets", "offset": "offsets", "cluster": "cluster", "file": "files"})
+        try:
+            os.makedirs(TimingOutput_Text.cget("text")+"/Timing/")
+        except:
+            pass
+        Temp_TimingOutputFolder = TimingOutput_Text.cget("text")+"/Timing/"
+        DirectoryCount = 0
+
+        Timing_df = pd.DataFrame({"directory":[],"syll_duration_entropy":[],"gap_duration_entropy":[]})
+
         for directory in syll_df["directory"].unique():
+            DirectoryCount +=1
+            Temp_Array = []
+            Temp_Array.append(directory)
+            TimingOutputFolder = Temp_TimingOutputFolder+"Day"+str(DirectoryCount)+"/"
+            try:
+                os.makedirs(TimingOutputFolder)
+            except:
+                pass
             syll_df_temp = syll_df[syll_df["directory"]==directory]
             segment_timing = avn.timing.SegmentTiming(Bird_ID, syll_df_temp,
                                                       song_folder_path=directory)
             syll_durations = segment_timing.get_syll_durations()
+            syll_durations.to_csv(TimingOutputFolder+"syll_durations.csv")
+            print("a")
 
             # There seems to be a conflict b/w seaborn (sns) and pandas, so the sns plotting functions raise an error... Everything else works fine
             sns.kdeplot(data=syll_durations, x='durations', bw_adjust=0.1)
             plt.title('Syllable Durations')
             plt.xlabel('Syllable duration (s)');
-            plt.savefig('C:/Users/ethan/Desktop/Roberts_Lab_Files/AVNGUI/A321/' + "fig1.png")
+            plt.savefig(TimingOutputFolder + "fig1.png")
             syll_duration_entropy = segment_timing.calc_syll_duration_entropy()
+            Temp_Array.append(syll_duration_entropy)
             gap_durations = segment_timing.get_gap_durations(max_gap=0.2)
             sns.kdeplot(data=gap_durations, x='durations', bw_adjust=0.1)
 
+            print("b")
+
             plt.title('Gap Durations')
             plt.xlabel('Gap duration (s)');
-            plt.savefig('C:/Users/ethan/Desktop/Roberts_Lab_Files/AVNGUI/A321/' + "fig2.png")
+            plt.savefig(TimingOutputFolder + "fig2.png")
+
             gap_duration_entropy = segment_timing.calc_gap_duration_entropy()
+            Temp_Array.append(gap_duration_entropy)
 
             rhythm_analysis = avn.timing.RhythmAnalysis("")
+            song_folder_path = ""
+            for i in TimingInput_Text.cget("text").split("/")[:-1]:
+                song_folder_path = song_folder_path+i+"/"
             rhythm_spectrogram = rhythm_analysis.make_rhythm_spectrogram(
-                song_folder_path='C:/Users/ethan/Desktop/Roberts_Lab_Files/AVNGUI/A321/1/')
+                song_folder_path=song_folder_path)
+            print(TimingInput_Text.cget("text"))
+            print("c")
+
+            # For some reason, the rhythm spectrogram is empty...
+            print(rhythm_analysis.rhythm_spectrogram)
 
             fig_rhythm_spectrogram = rhythm_analysis.plot_rhythm_spectrogram()
-            fig_rhythm_spectrogram.savefig('C:/Users/ethan/Desktop/Roberts_Lab_Files/AVNGUI/A321/' + "fig3.png")
+            fig_rhythm_spectrogram.savefig(TimingOutput_Text.cget("text") + "fig3.png")
             rhythm_spectrogram_entropy = rhythm_analysis.calc_rhythm_spectrogram_entropy()
             peak_frequencies = rhythm_analysis.get_refined_peak_frequencies(freq_range=3)
             fig_peak_frequencies = rhythm_analysis.plot_peak_frequencies()
-            fig_peak_frequencies.savefig('C:/Users/ethan/Desktop/Roberts_Lab_Files/AVNGUI/A321/' + "fig4.png")
+            fig_peak_frequencies.savefig(TimingOutputFolder + "fig4.png")
             peak_frequency_cv = rhythm_analysis.calc_peak_frequency_cv()
 
-            print("done")
+            Timing_df.loc[len(Timing_df.index)] = Temp_Array
+
+        Timing_df.to_csv(TimingOutputFolder+"Timing_Stats.csv")
+        print("done")
 
     def MoreInfo(Event):
-        #print(Event.widget)
+        # print(Event.widget)
         Text_wraplength = 300
 
-        ### Acoustic Features ###
-        if str(Event.widget) == ".!frame11.!button2": #win_length
-            AcousticSettingsDialog.config(text="Length of window over which to calculate each feature in samples", wraplength=Text_wraplength)
-            AcousticsSettingsDialogTitle.config(text='win_length')
-        if str(Event.widget) == ".!frame11.!button4": #hop_length
-            AcousticSettingsDialog.config(text="Number of samples to advance between windows", wraplength=Text_wraplength)
-            AcousticsSettingsDialogTitle.config(text='hop_length')
-        if str(Event.widget) == ".!frame11.!button6": #n_fft
-            AcousticSettingsDialog.config(text="Length of the transformed axis of the output. If n is smaller than " \
-                                   "the length of the win_length, the input is cropped", wraplength=Text_wraplength)
-            AcousticsSettingsDialogTitle.config(text='n_fft')
-        if str(Event.widget) == ".!frame11.!button8": #max_F0
-            AcousticSettingsDialog.config(text="Maximum allowable fundamental frequency of signal in Hz", wraplength=Text_wraplength)
-            AcousticsSettingsDialogTitle.config(text='max_F0')
-        if str(Event.widget) == ".!frame11.!button10": #min_frequency
-            AcousticSettingsDialog.config(text="Lower frequency cutoff in Hz. Only power at frequencies above " \
-                                   "this will contribute to feature calculation", wraplength=Text_wraplength)
-            AcousticsSettingsDialogTitle.config(text='min_frequency')
-        if str(Event.widget) == ".!frame11.!button12": #freq_range
-            AcousticSettingsDialog.config(text="Proportion of power spectrum frequency bins to consider", wraplength=Text_wraplength)
-            AcousticsSettingsDialogTitle.config(text='freq_range')
-        if str(Event.widget) == ".!frame11.!button14": #baseline_amp
-            AcousticSettingsDialog.config(text="Baseline amplitude used to calculate amplitude in dB", wraplength=Text_wraplength)
-            AcousticsSettingsDialogTitle.config(text='baseline_amp')
-        if str(Event.widget) == ".!frame11.!button16": #fmax_yin
-            AcousticSettingsDialog.config(text="Maximum frequency in Hz used to estimate fundamental frequency " \
-                                   "with the YIN algorithm", wraplength=Text_wraplength)
-            AcousticsSettingsDialogTitle.config(text='fmax_yin')
-
-        AcousticSettingsDialog.update()
-
-        ### Spectrogram Generation Parameters ###
-        if str(Event.widget) == ".!frame4.!button2": #bandpass_lower_cutoff
-            LabelingSpectrogramDialog.config(text="Lower cutoff frequency in Hz for a hamming window " \
+        SettingsDict = {
+                        "6": {"2":"Lower cutoff frequency in Hz for a hamming window " \
                                    "bandpass filter applied to the audio data before generating " \
-                                   "spectrograms. Frequencies below this value will be filtered out", wraplength=Text_wraplength)
-            LabelingSpectrogramTitle.config(text='bandpass_lower_cutoff')
-        if str(Event.widget) == ".!frame4.!button4": #bandpass_upper_cutoff
-            LabelingSpectrogramDialog.config(text="Upper cutoff frequency in Hz for a hamming window bandpass" \
+                                   "spectrograms. Frequencies below this value will be filtered out"+'!bandpass_lower_cutoff',
+                            "4":"Upper cutoff frequency in Hz for a hamming window bandpass" \
                                    " filter applied to the audio data before generating spectrograms. " \
-                                   "Frequencies above this value will be filtered out", wraplength=Text_wraplength)
-            LabelingSpectrogramTitle.config(text='bandpass_upper_cutoff')
-        if str(Event.widget) == ".!frame4.!button6": #a_min
-            LabelingSpectrogramDialog.config(text="Minimum amplitude threshold in the spectrogram. Values " \
-                                   "lower than a_min will be set to a_min before conversion to decibels", wraplength=Text_wraplength)
-            LabelingSpectrogramTitle.config(text='a_min')
-        if str(Event.widget) == ".!frame4.!button8": #ref_db
-            LabelingSpectrogramDialog.config(text="When making the spectrogram and converting it from amplitude " \
+                                   "Frequencies above this value will be filtered out"+"!bandpass_upper_cutoff",
+                            "6":"Minimum amplitude threshold in the spectrogram. Values " \
+                                   "lower than a_min will be set to a_min before conversion to decibels"+"!a_min",
+                            "8":"When making the spectrogram and converting it from amplitude " \
                                    "to db, the amplitude is scaled relative to this reference: " \
-                                   "20 * log10(S/ref_db) where S represents the spectrogram with amplitude values", wraplength=Text_wraplength)
-            LabelingSpectrogramTitle.config(text='ref_db')
-        if str(Event.widget) == ".!frame4.!button10": #min_level_db
-            LabelingSpectrogramDialog.config(text="When making the spectrogram, once the amplitude has been converted " \
+                                   "20 * log10(S/ref_db) where S represents the spectrogram with amplitude values"+"!ref_db",
+                            "10":"When making the spectrogram, once the amplitude has been converted " \
                                    "to decibels, the spectrogram is normalized according to this value: " \
                                    "(S - min_level_db)/-min_level_db where S represents the spectrogram " \
                                    "in db. Any values of the resulting operation which are <0 are set to " \
-                                   "0 and any values that are >1 are set to 1", wraplength=Text_wraplength)
-            LabelingSpectrogramTitle.config(text='min_level_db')
-        if str(Event.widget) == ".!frame4.!button12": #n_fft
-            LabelingSpectrogramDialog.config(text="When making the spectrogram, this is the length of the windowed " \
+                                   "0 and any values that are >1 are set to 1"+"!min_level_db",
+                            "12":"When making the spectrogram, this is the length of the windowed " \
                                    "signal after padding with zeros. The number of rows spectrogram is" \
                                    " \"(1+n_fft/2)\". The default value,\"n_fft=512\" samples, " \
                                    "corresponds to a physical duration of 93 milliseconds at a sample " \
@@ -1198,10 +1212,8 @@ try:
                                    "is well adapted for music signals. However, in speech processing, the " \
                                    "recommended value is 512, corresponding to 23 milliseconds at a sample" \
                                    " rate of 22050 Hz. In any case, we recommend setting \"n_fft\" to a " \
-                                   "power of two for optimizing the speed of the fast Fourier transform (FFT) algorithm", wraplength=Text_wraplength)
-            LabelingSpectrogramTitle.config(text='n_fft')
-        if str(Event.widget) == ".!frame4.!button14": #win_length
-            LabelingSpectrogramDialog.config(text="When making the spectrogram, each frame of audio is windowed by a window " \
+                                   "power of two for optimizing the speed of the fast Fourier transform (FFT) algorithm"+"!n_fft",
+                            "14":"When making the spectrogram, each frame of audio is windowed by a window " \
                                    "of length \"win_length\" and then padded with zeros to match \"n_fft\"." \
                                    " Padding is added on both the left- and the right-side of the window so" \
                                    " that the window is centered within the frame. Smaller values improve " \
@@ -1210,95 +1222,114 @@ try:
                                    "resolution (i.e. the ability to discriminate pure tones that are closely" \
                                    " spaced in frequency). This effect is known as the time-frequency " \
                                    "localization trade-off and needs to be adjusted according to the " \
-                                   "properties of the input signal", wraplength=Text_wraplength)
-            LabelingSpectrogramTitle.config(text='win_length')
-        if str(Event.widget) == ".!frame4.!button16": #hop_length
-            LabelingSpectrogramDialog.config(text="The number of audio samples between adjacent windows when creating " \
+                                   "properties of the input signal"+"!win_length",
+                            "16":"The number of audio samples between adjacent windows when creating " \
                                    "the spectrogram. Smaller values increase the number of columns in " \
-                                   "the spectrogram without affecting the frequency resolution")
-            LabelingSpectrogramTitle.config(text='hop_length')
-        if str(Event.widget) == ".!frame4.!button18": #max_spec_size
-            LabelingSpectrogramDialog.config(text="Maximum frequency in Hz used to estimate fundamental frequency " \
-                                   "with the YIN algorithm", wraplength=Text_wraplength)
-            LabelingSpectrogramTitle.config(text='max_spec_size')
-        LabelingSpectrogramDialog.update()
-
-        ### UMAP Parameters ###
-        if str(Event.widget) == ".!frame5.!button2": #n_neighbors
-            LabelingUMAPDialog.config(text="The size of local neighborhood (in terms of number of neighboring sample points)" \
+                                   "the spectrogram without affecting the frequency resolution"+"!hop_length",
+                            "18":"Maximum frequency in Hz used to estimate fundamental frequency " \
+                                   "with the YIN algorithm"+"!max_spec_size"},
+                        "7": {"2":"The size of local neighborhood (in terms of number of neighboring sample points)" \
                                    " used for manifold approximation. Larger values result in more global views " \
                                    "of the manifold, while smaller values result in more local data being " \
-                                   "preserved. In general values should be in the range 2 to 100", wraplength=Text_wraplength)
-            LabelingUMAPTitle.config(text='n_neighbors')
-        if str(Event.widget) == ".!frame5.!button4": #n_components
-            LabelingUMAPDialog.config(text="The dimension of the space to embed into. This defaults to 2 to provide " \
+                                   "preserved. In general values should be in the range 2 to 100"+'!n_neighbors',
+                              "4":"The dimension of the space to embed into. This defaults to 2 to provide " \
                                    "easy visualization, but can reasonably be set to any integer value " \
-                                   "in the range 2 to 100")
-            LabelingUMAPTitle.config(text='n_components')
-        if str(Event.widget) == ".!frame5.!button6": #min_dist
-            LabelingUMAPDialog.config(text="The effective minimum distance between embedded points. " \
+                                   "in the range 2 to 100"+"!n_components",
+                              "6":"The effective minimum distance between embedded points. " \
                                    "Smaller values will result in a more clustered/clumped " \
                                    "embedding where nearby points on the manifold are drawn " \
                                    "closer together, while larger values will result on a more " \
                                    "even dispersal of points. The value should be set relative to " \
                                    "the \"spread\" value, which determines the scale at which " \
-                                   "embedded points will be spread out", wraplength=Text_wraplength)
-            LabelingUMAPTitle.config(text='min_dist')
-        if str(Event.widget) == ".!frame5.!button8": #spread
-            LabelingUMAPDialog.config(text="The effective scale of embedded points. In combination with " \
-                                   "\"min_dist\" this determines how clustered/clumped the embedded points are", wraplength=Text_wraplength)
-            LabelingUMAPTitle.config(text='spread')
-        if str(Event.widget) == ".!frame5.!button10": #metric
-            LabelingUMAPDialog.config(text="The metric to use to compute distances in high dimensional space", wraplength=Text_wraplength)
-            LabelingUMAPTitle.config(text='metric')
-        if str(Event.widget) == ".!frame5.!button12": #random_state
-            LabelingUMAPDialog.config(text="If specified, random_state is the seed used by the random " \
+                                   "embedded points will be spread out"+'!min_dist',
+                              "8":"The effective scale of embedded points. In combination with " \
+                                   "\"min_dist\" this determines how clustered/clumped the embedded points are"+'!spread',
+                              "10":"The metric to use to compute distances in high dimensional space"+'!metric',
+                              "12":"If specified, random_state is the seed used by the random " \
                                    "number generator. Specifying a random state is the only way " \
                                    "to ensure that you can reproduce an identical UMAP with the " \
-                                   "same data set multiple times", wraplength=Text_wraplength)
-            LabelingUMAPTitle.config(text='random_state')
-
-        LabelingUMAPDialog.update()
-        ### Clustering Parameters ###
-        if str(Event.widget) == ".!frame6.!button2": # min_cluster_prop
-            LabelingClusterDialog.config(text='Minimum fraction of syllables that can constitute a cluster. '
+                                   "same data set multiple times"+'!random_state'},
+                        "8": {"2":'Minimum fraction of syllables that can constitute a cluster. '
                                               'For example, in a dataset of 1000 syllables, there need to be '
                                               'at least 40 instances of a particular syllable for that to be '
                                               'considered a cluster. Single linkage splits that contain fewer '
                                               'points than this will be considered points “falling out” of a '
                                               'cluster rather than a cluster splitting into two new clusters'
-                                              'when performing HDBSCAN clustering', wraplength=Text_wraplength)
-            LabelingClusterTitle.config(text="min_cluster_prop")
-        if str(Event.widget) == ".!frame6.!button4": # min_samples
-            LabelingClusterDialog.config(text='The number of samples in a neighbourhood for a point to be '
+                                              'when performing HDBSCAN clustering'+"!min_cluster_prop",
+                              "4":'The number of samples in a neighbourhood for a point to be '
                                               'considered a core point in HDBSCAN clustering. The larger the '
                                               'value of \"min_samples\" you provide, the more conservative '
                                               'the clustering – more points will be declared as noise, and '
-                                              'clusters will be restricted to progressively more dense areas', wraplength=Text_wraplength)
-            LabelingClusterTitle.config(text="min_samples")
-        LabelingClusterDialog.update()
-
-        ### Syntax ###
-        if str(Event.widget) == ".!frame15.!button2": # min_gap
-            SyntaxDialog.config(text="Minimum duration in seconds for a gap between syllables "
+                                              'clusters will be restricted to progressively more dense areas'+"!min_samples"},
+                        "12": {"2":"Length of window over which to calculate each feature in samples"+'!win_length',
+                            "4":"Number of samples to advance between windows"+'!hop_length',
+                            "6":"Length of the transformed axis of the output. If n is smaller than " \
+                                               "the length of the win_length, the input is cropped"+'!n_fft',
+                            "8":"Maximum allowable fundamental frequency of signal in Hz"+'!max_F0',
+                            "10":"Lower frequency cutoff in Hz. Only power at frequencies above " \
+                                               "this will contribute to feature calculation"+'!min_frequency',
+                            "12":"Proportion of power spectrum frequency bins to consider"+'!freq_range',
+                            "14":"Baseline amplitude used to calculate amplitude in dB"+'!baseline_amp',
+                            "16":"Maximum frequency in Hz used to estimate fundamental frequency " \
+                                               "with the YIN algorithm"+'!fmax_yin'},
+                        "15": {"2":"Minimum duration in seconds for a gap between syllables "
                                      "to be considered syntactically relevant. This value should "
                                      "be selected such that gaps between syllables in a bout are "
-                                     "shorter than min_gap, but gaps between bouts are longer than min_gap", wraplength=Text_wraplength)
-        SyntaxDialog.update()
+                                     "shorter than min_gap, but gaps between bouts are longer than min_gap"+"!min_gap"}
+        }
+
+        Module = str(Event.widget).split(".")[1].split("e")[-1]
+        Setting = str(Event.widget).split("n")[-1]
+
+        ### Labeling Spectrogram Generation Parameters ###
+        if Module == "6":
+            LabelingSpectrogramDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
+            LabelingSpectrogramDialog.update()
+            LabelingSpectrogramTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
+            LabelingSpectrogramTitle.update()
+
+        ### UMAP Parameters ###
+        if Module == "7":
+            LabelingUMAPDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
+            LabelingUMAPDialog.update()
+            LabelingUMAPTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
+            LabelingUMAPTitle.update()
+
+        ### Clustering Parameters ###
+        if Module == "8":
+            LabelingClusterDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
+            LabelingClusterDialog.update()
+            LabelingClusterTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
+            LabelingClusterTitle.update()
+
+        ### Acoustic Features ###
+        if Module == "12":
+            AcousticSettingsDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
+            AcousticSettingsDialog.update()
+            AcousticsSettingsDialogTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
+            AcousticsSettingsDialogTitle.update()
+
+        ### Syntax ###
+        if Module == "15":
+            SyntaxDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
+            SyntaxDialog.update()
+            SyntaxDialogTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
+            SyntaxDialogTitle.update()
 
     def LessInfo(Event):
-        if "frame11" in str(Event.widget):
-            AcousticSettingsDialog.config(text="")
-            AcousticsSettingsDialogTitle.config(text="")
-        if "frame4" in str(Event.widget):
-            LabelingSpectrogramDialog.config(text="")
-            LabelingSpectrogramTitle.config(text="")
-        if "frame5" in str(Event.widget):
-            LabelingUMAPDialog.config(text="")
-            LabelingUMAPTitle.config(text="")
-        if "frame6" in str(Event.widget):
-            LabelingClusterDialog.config(text="")
-            LabelingClusterTitle.config(text="")
+        pass
+        # if "frame11" in str(Event.widget):
+        #     AcousticSettingsDialog.config(text="")
+        #     AcousticsSettingsDialogTitle.config(text="")
+        # if "frame4" in str(Event.widget):
+        #     LabelingSpectrogramDialog.config(text="")
+        #     LabelingSpectrogramTitle.config(text="")
+        # if "frame5" in str(Event.widget):
+        #     LabelingUMAPDialog.config(text="")
+        #     LabelingUMAPTitle.config(text="")
+        # if "frame6" in str(Event.widget):
+        #     LabelingClusterDialog.config(text="")
+        #     LabelingClusterTitle.config(text="")
 
     def Validate_Settings(Widget, WidgetName, ErrorLabel):
         IntVarList = ['n_components_entry_Labeling', 'random_state_entry_Labeling', 'min_samples_entry_Labeling']
@@ -1357,42 +1388,6 @@ try:
                 ErrorLabel.config(text="Invalid Input: Please Enter An Integer")
                 Widget.config(bg="red")
 
-    def CountSyllables(Mode):
-        global LabelingFileList
-        global Massimo_Count_Syllable_Output_Text
-
-        if Mode == "input":
-            LabelingFileList = filedialog.askopenfilenames(filetypes=[(".csv files", "*.csv")])
-            Massimo_Count_Syllable_Text.config(text=str(len(LabelingFileList))+" files selected")
-            Massimo_Count_Syllable_Text.update()
-        if Mode == "File_Out":
-            Output = filedialog.askdirectory()
-            Massimo_Count_Syllable_Output_Text.config(text=Output)
-            Massimo_Count_Syllable_Output_Text.update()
-        if Mode == "output":
-            Headers = []
-            for file in LabelingFileList:
-                df_temp = pd.read_csv(file)
-                Headers_temp = df_temp.labels.unique()
-                if len(Headers_temp) > len(Headers):
-                    Headers = Headers_temp
-            MasterCount = pd.DataFrame(columns=Headers)
-            # for header in Headers:
-            #     MasterCount[header] = []
-            for file in LabelingFileList:
-                df_temp = pd.read_csv(file)
-                MasterCount_temp = []
-                for syllable in df_temp.labels.unique():
-                    MasterCount_temp.append(sum(df_temp.labels == syllable))
-                if len(MasterCount_temp) < len(Headers):
-                    diff = len(Headers)-len(MasterCount_temp)
-                    for i in range(diff):
-                        MasterCount_temp.append(0)
-                MasterCount.loc[len(MasterCount.index)] = MasterCount_temp
-            MasterCount = MasterCount.reindex(sorted(MasterCount.columns), axis=1)
-            MasterCount.to_csv(Massimo_Count_Syllable_Output_Text.cget("text")+"/Syllable_Counts.csv")
-            print("Done!")
-
     def Extra_Labeling():
         global LabelingExtra_Input_Text
         # global LabelingExtra_Output_Text
@@ -1439,6 +1434,7 @@ try:
     ### Initialize gui ###
     gui = tk.Tk()
     gui.title("AVN Segmentation and Labeling")
+    gui.resizable(False, False)
 
     ParentStyle = ttk.Style()
     ParentStyle.configure('Parent.TNotebook.Tab', font=('Arial', '10', 'bold'))
@@ -1462,12 +1458,12 @@ try:
     LabelingNotebook.grid(row=1)
     LabelingNotebook.add(LabelingMainFrame, text="Home")
     LabelingSpectrogram_UMAP = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
-    LabelingNotebook.add(LabelingSpectrogram_UMAP, text="Generate Spectrograms and UMAP")
+    LabelingNotebook.add(LabelingSpectrogram_UMAP, text="Generate Spectrograms")
     LabelingBulkSave = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
 
     # The LabelingBulkSave tab has been hidden for now. Not sure if it's needed
 
-    #LabelingNotebook.add(LabelingBulkSave, text="Save Many Spectrograms")
+    LabelingNotebook.add(LabelingBulkSave, text="Save Many Spectrograms")
     LabelingSettingsMaster = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
     LabelingNotebook.add(LabelingSettingsMaster, text="Settings")
 
@@ -1481,31 +1477,6 @@ try:
     LabelingClusterSettings = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     LabelingSettingsNotebook.add(LabelingClusterSettings, text="Clustering Settings")
 
-    # Labeling Additional Info Tab
-    LabelingInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
-    LabelingNotebook.add(LabelingInfoFrame, text="Info")
-
-    # Processinig of segmentation data for Massimo
-    # LabelingExtra = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
-    # LabelingNotebook.add(LabelingExtra, text="For Massimo")
-
-    # #Massimo_Count_Syllable_Input = tk.Button(LabelingExtra, text='Select Labeling Files', command=lambda:CountSyllables("input")).grid(row=0, column=0)
-    # global Massimo_Count_Syllable_Text
-    # Massimo_Count_Syllable_Text = tk.Label(LabelingExtra, text="")
-    # Massimo_Count_Syllable_Text.grid(row=0, column=1)
-    # Massimo_Count_Syllable_Button = tk.Button(LabelingExtra, text="Count Syllables", command=lambda:CountSyllables("output")).grid(row=2, column=0)
-    # Massimo_Count_Syllable_Output_Button = tk.Button(LabelingExtra, text="Output", command=lambda:CountSyllables("File_Out")).grid(row=1, column=0)
-    # global Massimo_Count_Syllable_Output_Text
-    # Massimo_Count_Syllable_Output_Text = tk.Label(LabelingExtra, text="")
-    # Massimo_Count_Syllable_Output_Text.grid(row=1,column=1)
-    #
-    # LabelingExtra_Input_Button = tk.Button(LabelingMainFrame, text="Select Files", command=lambda:FileExplorer("Labeling_Extra", "Input")).grid(row=15, column=1)
-    # global LabelingExtra_Input_Text
-    # LabelingExtra_Input_Text = tk.Label(LabelingMainFrame, text=Dir_Width*" ", bg="light grey")
-    # LabelingExtra_Input_Text.grid(row=15, column=2)
-    #
-    # LabelingExtra_Run = tk.Button(LabelingMainFrame, text="For Massimo", command=lambda:Extra_Labeling())
-    # LabelingExtra_Run.grid(row=15, column=0)
 ###############################################
     # Main Labeling Window
     LabelingButton = tk.Button(LabelingMainFrame, text="Run", command = lambda : Labeling())
@@ -1566,7 +1537,7 @@ try:
 
     global MaxFiles_Labeling
     MaxFiles_Labeling_Text = tk.Label(LabelingSpectrogram_UMAP, text="Number of Spectrograms to Generate:").grid(row=3, column=0)
-    MaxFiles_Labeling = tk.Spinbox(LabelingSpectrogram_UMAP, from_=0, to=50, font=("Arial, 10"), width=10, justify="center")
+    MaxFiles_Labeling = tk.Spinbox(LabelingSpectrogram_UMAP, from_=0, to=99, font=("Arial, 10"), width=10, justify="center")
     MaxFiles_Labeling.grid(row=3, column=1, sticky="N")
 
     GenerateSpectrogram_Button = tk.Button(LabelingSpectrogram_UMAP, text="Generate Spectrograms", command=lambda:LabelingSpectrograms())
@@ -2055,24 +2026,33 @@ try:
     AcousticsOutput_Text = tk.Label(AcousticsMainFrameSingle, text=2*Dir_Width*" ", bg="light grey")
     AcousticsOutput_Text.grid(row=2, column=1, padx=Padding_Width, columnspan=2)
 
-    PaddingLabel = tk.Label(AcousticsMainFrameSingle, text="").grid(row=3)
+    Calculation_Method_Label = tk.Label(AcousticsMainFrameSingle, text="Calculation Method:").grid(row=3, column=0)
+    global ContCalc
+    ContCalc = IntVar()
+    ContCalc.set(0)
+    Continuous_Calculations = tk.Radiobutton(AcousticsMainFrameSingle, text="Continuous Calcualtions",
+                                             variable=ContCalc, value=0).grid(row=3, column=1, columnspan=1)
+    Average_Calculations = tk.Radiobutton(AcousticsMainFrameSingle, text="Average Calcualtions", variable=ContCalc,
+                                          value=1).grid(row=3, column=2, columnspan=1)
+
+    PaddingLabel = tk.Label(AcousticsMainFrameSingle, text="").grid(row=4)
 
     AcousticsText = tk.Label(AcousticsMainFrameSingle, text="Acoustic features to analyze:", justify="center")
-    AcousticsText.grid(row=4, column=1, padx=Padding_Width, columnspan=2)
+    AcousticsText.grid(row=5, column=1, padx=Padding_Width, columnspan=2)
 
-    AcousticsOnsetLabel = tk.Label(AcousticsMainFrameSingle, text="Onset:").grid(row=4, column=0)
+    AcousticsOnsetLabel = tk.Label(AcousticsMainFrameSingle, text="Onset:").grid(row=5, column=0)
     AcousticsOnset = tk.Entry(AcousticsMainFrameSingle, justify="center")
     AcousticsOnset.insert(0,"0")
-    AcousticsOnset.grid(row=5, column=0)
+    AcousticsOnset.grid(row=6, column=0)
 
-    AcousticsOffsetLabel = tk.Label(AcousticsMainFrameSingle, text="Offset:").grid(row=7, column=0)
+    AcousticsOffsetLabel = tk.Label(AcousticsMainFrameSingle, text="Offset:").grid(row=8, column=0)
     global AcousticsOffset
     AcousticsOffset = tk.Entry(AcousticsMainFrameSingle, justify="center")
     AcousticsOffset.insert(0, "End of File")
-    AcousticsOffset.grid(row=8, column=0)
+    AcousticsOffset.grid(row=9, column=0)
 
     AcousticsOffsetReset = tk.Button(AcousticsMainFrameSingle, text="Reset", command=lambda:ResetAcousticsOffset)
-    AcousticsOffsetReset.grid(row=9, column=0)
+    AcousticsOffsetReset.grid(row=10, column=0)
 
 
     # global SaveMetadata
@@ -2113,7 +2093,7 @@ try:
             for checkbox in ButtonNameList:
                 checkbox.set(0)
 
-    StartRow = 5
+    StartRow = 6
     CheckAll_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text='Select All', variable=CheckAll, command=lambda:CheckAllBoxes(CheckAll))
     CheckAll_CheckBox.grid(row=StartRow, column=1, columnspan=2)
     Goodness_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text= "Goodness", anchor=tk.W, variable=RunGoodness)
@@ -2132,24 +2112,18 @@ try:
     Pitch_CheckBox.grid(row=StartRow+7, column=1, columnspan=2)
 
     PaddingLabel2 = tk.Label(AcousticsMainFrameSingle, text="").grid(row=StartRow+8)
-    global ContCalc
-    ContCalc = IntVar()
-    Continuous_Calculations_Checkbox = tk.Checkbutton(AcousticsMainFrameSingle, text="Continuous Calcualtions", variable=ContCalc,onvalue=1, offvalue=0)
-    Continuous_Calculations_Checkbox.grid(row=StartRow+9, column=1, columnspan=2)
-    AcousticsRunButton = tk.Button(AcousticsMainFrameSingle, text="Run", command=lambda: AcousticsFeaturesOneFile())
+
+    AcousticsRunButton = tk.Button(AcousticsMainFrameSingle, text="Run", command=lambda: Acoustics_Interval())
     AcousticsRunButton.grid(row=StartRow+10, column=1, columnspan=2)
 
-    ### Multiple File Acoustic Features Window ###
-
-    #MultiAcousticsFrame = tk.Frame()
-    #notebook.add(MultiAcousticsFrame, text="Acoustic Features - Multiple Files")
+    ### Multiple Syllable Acoustic Features Window ###
 
     AcousticsMainFrameMulti = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
     AcousticsNotebook.add(AcousticsMainFrameMulti, text="Multiple Syllables")
     AcousticsSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
     AcousticsNotebook.add(AcousticsSettingsFrame, text="Advanced Settings")
-    AcousticsInfoFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
-    AcousticsNotebook.add(AcousticsInfoFrame, text="Info")
+    # AcousticsInfoFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
+    # AcousticsNotebook.add(AcousticsInfoFrame, text="Info")
 
     MultiAcousticsError = tk.Label(AcousticsMainFrameMulti, text="")
     MultiAcousticsError.grid(row=11, column=1)
@@ -2308,7 +2282,7 @@ try:
     MultiAcousticsBirdID.insert(0, "Bird ID")
     MultiAcousticsBirdID.bind("<FocusIn>", focus_in)
     MultiAcousticsBirdID.bind("<FocusOut>", focus_out)
-    MultiAcousticsBirdID.grid(row=2, column=1, columnspan=2)
+    MultiAcousticsBirdID.grid(row=2, column=1)
 
     MultiAcousticsOutputButton = tk.Button(AcousticsMainFrameMulti, text="Select Output Folder", command=lambda: FileExplorer("Acoustics_Multi", "Output"))
     MultiAcousticsOutputButton.grid(row=1, column=0)
@@ -2405,7 +2379,7 @@ try:
     MultiFrequency_modulation_CheckBox.grid(row=MultiSettings_StartRow+6, column=1, columnspan=1)
     MultiPitch_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text="Pitch", anchor=tk.W, variable=MultiRunPitch)
     MultiPitch_CheckBox.grid(row=MultiSettings_StartRow+7, column=1, columnspan=1)
-    MultiAcousticsRunButton = tk.Button(AcousticsMainFrameMulti, text="Run", command=lambda: AcousticsFeaturesManyFiles())
+    MultiAcousticsRunButton = tk.Button(AcousticsMainFrameMulti, text="Run", command=lambda: Acoustics_Syllables())
     MultiAcousticsRunButton.grid(row=MultiSettings_StartRow+8, column=1)
 
     #SegmentationHelpButton = tk.Button(SegmentationFrame, text="Help", command= lambda:HelpButton)
@@ -2421,8 +2395,8 @@ try:
     SyntaxNotebook.add(SyntaxMainFrame, text="Home")
     SyntaxSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
     SyntaxNotebook.add(SyntaxSettingsFrame, text="Advanced Settings")
-    SyntaxInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
-    SyntaxNotebook.add(SyntaxInfoFrame, text="Info")
+    # SyntaxInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    # SyntaxNotebook.add(SyntaxInfoFrame, text="Info")
 
     SyntaxFileButton = tk.Button(SyntaxMainFrame, text="Select Labeling File", command=lambda:FileExplorer("Syntax", "Input"))
     SyntaxFileButton.grid(row=1,column=0)
@@ -2434,9 +2408,10 @@ try:
     global SyntaxOutputDisplay
     SyntaxOutputDisplay = tk.Label(SyntaxMainFrame, text=Dir_Width*" ", bg="light grey")
     SyntaxOutputDisplay.grid(row=2, column=1, padx=Padding_Width, columnspan=3, sticky='w')
-    SyntaxRunButton = tk.Button(SyntaxMainFrame, text="Run", command=lambda: SyllableSyntax())
+    SyntaxRunButton = tk.Button(SyntaxMainFrame, text="Run", command=lambda: Syntax())
     SyntaxRunButton.grid(row=5, column=0)
     SyntaxBirdID_Text = tk.Label(SyntaxMainFrame, text="Bird ID:").grid(row=3, column=0)
+    global SyntaxBirdID
     SyntaxBirdID = tk.Entry(SyntaxMainFrame, fg="grey", font=("Arial",15), justify="center", width=BirdID_Width)
     SyntaxBirdID.insert(0, "Bird ID")
     SyntaxBirdID.bind("<FocusIn>", focus_in)
@@ -2467,8 +2442,11 @@ try:
     min_gap_moreinfo_Syntax.bind("<Enter>", MoreInfo)
     min_gap_moreinfo_Syntax.bind("<Leave>", LessInfo)
 
+    SyntaxDialogTitle = tk.Label(SyntaxSettingsFrame, text="", font=("Arial", 25, "bold"),justify="center")
+    SyntaxDialogTitle.grid(row=0, column=4, rowspan=2)
     SyntaxDialog = tk.Label(SyntaxSettingsFrame, text="", justify="center")
-    SyntaxDialog.grid(row=0, column=4, rowspan=2)
+    SyntaxDialog.grid(row=2, column=4, rowspan=2)
+
 
     Var_Heatmap = IntVar()
     SelectCountHeatmap = tk.Radiobutton(SyntaxMainFrame, text="Count Matrix", variable=Var_Heatmap, value=1)
@@ -2485,7 +2463,7 @@ try:
                 fig = Figure()
                 sns.heatmap(syntax_data.trans_mat, annot=True, fmt='0.0f')
             except:
-                SyllableSyntax()
+                Syntax()
                 # Add option for custom dimensions using "plt.figure(figsize = (x, y))"
                 fig = Figure()
                 sns.heatmap(syntax_data.trans_mat, annot=True, fmt='0.0f')
@@ -2498,7 +2476,7 @@ try:
                 # Add option for custom dimensions using "plt.figure(figsize = (x, y))"
                 sns.heatmap(syntax_data.trans_mat_prob, annot=True, fmt='0.2f')
             except:
-                SyllableSyntax()
+                Syntax()
                 # Add option for custom dimensions using "plt.figure(figsize = (x, y))"
                 sns.heatmap(syntax_data.trans_mat_prob, annot=True, fmt='0.2f')
             plt.title("Probability Transition Matrix")
@@ -2535,8 +2513,12 @@ try:
         global syntax_data
         global Bird_ID
         global SyntaxDirectory
-
+        global SyntaxBirdID
         try: SyntaxAlignment_WarningMessage.destroy()
+        except: pass
+        SyntaxOutputFolder = SyntaxOutputDisplay.cget("text") + "/Syntax_Plots/"
+        try:
+            os.makedirs(SyntaxOutputFolder)
         except: pass
         if SyntaxAlignmentVar.get() == "Select Label":
             SyntaxAlignment_WarningMessage = tk.Label(SyntaxMainFrame, text="Warning: Must Select Label to Proceed", font=("Arial", 7))
@@ -2556,19 +2538,38 @@ try:
                 try:
                     syntax_raster_df = syntax_data.make_syntax_raster(alignment_syllable=int(SyntaxAlignmentVar.get()))
                 except:
-                    SyllableSyntax()
+                    Syntax()
                     syntax_raster_df = syntax_data.make_syntax_raster(alignment_syllable=int(SyntaxAlignmentVar.get()))
-                FigTitle = str(Bird_ID)+" Syntax Raster_Syl"+str(SyntaxAlignmentVar.get())
+                try:
+                    FigTitle = str(Bird_ID)+" Syntax Raster_Syl"+str(SyntaxAlignmentVar.get())
+                except:
+                    Bird_ID = SyntaxBirdID.get()
+                    FigTitle = str(Bird_ID)+" Syntax Raster_Syl"+str(SyntaxAlignmentVar.get())
+
+                ### Note for Therese: I added "return plt" to line 1083 of avn.syntax and line 139 to avn.plotting
+
                 fig = avn.plotting.plot_syntax_raster(syntax_data, syntax_raster_df, title=FigTitle, figsize=(X, Y))
             if SyntaxAlignmentVar.get() == "Auto":
                 try:
                     syntax_raster_df = syntax_data.make_syntax_raster()
                 except:
-                    SyllableSyntax()
+                    Syntax()
                     syntax_raster_df = syntax_data.make_syntax_raster()
-                FigTitle = str(Bird_ID)+" Syntax Raster"
+                try:
+                    FigTitle = str(Bird_ID)+" Syntax Raster"
+                except:
+                    Bird_ID = SyntaxBirdID.get()
+                    FigTitle = str(Bird_ID)+" Syntax Raster"
+                print(syntax_data)
+                print("-------------")
+                print(syntax_raster_df)
                 fig = avn.plotting.plot_syntax_raster(syntax_data, syntax_raster_df, title=FigTitle, figsize=(X, Y))
 
+            #### ISSUE: Raster plot function currently creates an empty raster plot (and saved figure is also empty)
+
+
+
+            fig.savefig(SyntaxOutputFolder+"raster_fig.png")
             DisplayRaster = tk.Toplevel(gui)
             SaveRaster = tk.Button(DisplayRaster, text="Save", command=lambda:avn.plotting.plot_syntax_raster(syntax_data, syntax_raster_df, title=FigTitle).savefig(RasterOutputDirectory+FigTitle+".png"))
             SaveRaster.grid(row=0, column=1)
@@ -2598,7 +2599,7 @@ try:
         try:
             entropy_rate = syntax_data.get_entropy_rate()
         except:
-            SyllableSyntax()
+            Syntax()
             entropy_rate = syntax_data.get_entropy_rate()
         entropy_rate_norm = entropy_rate / np.log2(len(syntax_data.unique_labels) + 1)
 
@@ -2652,76 +2653,38 @@ try:
     CustomFigSize = tk.Checkbutton(SyntaxMainFrame, text="Custom Figure Size", variable=ChangeFigSize, command=lambda:ChangeFigureSize())
     CustomFigSize.grid(row=6, column=2, columnspan=2, padx=10)
 
-    """
-            Changes:
-
-            Matrix Heatmap (have option for custom title - default is "TransitionMatrix_[BirdID]")
-               plt.figure(figsize = (x, y))
-               sns.heatmap(syntax_data.trans_mat, annot = True, fmt = '0.0f')
-               MatrixHeatmap = plt.getFigure()
-
-            Probability Matrix - Same as above; maybe have an option to select b/w count vs probability
-
-            Syntax Raster:
-            Option to choose alignment syllable (or have no alignment syllable to not align anything)
-            Create preview for syntax raster w/o alignment to determine best syllable to use
-
-            Make syntax_data object global to use for transition matrix and syntax raster; have matrix and raster 
-            look for syntax_data to see if it exists, otherwise run syntax to generate syntax_data
-
-            Save entropy rate and entropy rate normalized to a csv
-
-            Give option to save syllable repetitions to csv
-
-            For all output things (for all modules) create "Output" folder containing subfolders for each module's output csv's and photos
-
-            Merged syllable stats
-
-            Ignore syllable pair repetition
-
-            Ignore syntax for many birds
-
-            make error messages for every entry field - maybe disable "run" button if something is entered incorrectly
-
-            When saving csv's, save them to subfolder w/in module folder (folder is named as timestamp of file creation)
-            
-            Maybe switch from pre-determined file names and locations I use filedialog.asksaveasfilename() and give user
-            option of what to name file and where to save (useful for terminal functions like prob/count matrix, entropy rate, etc.
-            where no other functions depend on it -- still keep things as is for important functions like labeling that have dependencies
-            """
-
     ### Plain Spectrogram Generation - Whole File ###
-    PlainSpectro = tk.Frame(gui)
-    notebook.add(PlainSpectro, text="Plain Spectrograms")
+    PlainSpectrograms = tk.Frame(gui, width=MasterFrameWidth, height=MasterFrameHeight)
+    notebook.add(PlainSpectrograms, text="Plain Spectrograms")
 
-    PlainMainFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
-    PlainNotebook = ttk.Notebook(PlainSpectro)
+    Plain_Folder = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    PlainNotebook = ttk.Notebook(PlainSpectrograms)
     PlainNotebook.grid(row=1)
-    PlainNotebook.add(PlainMainFrame, text="Whole Folder")
+    PlainNotebook.add(Plain_Folder, text="Whole Folder")
 
     global PlainDirectoryLabel
-    PlainDirectoryLabel = tk.Label(PlainMainFrame, text=Dir_Width*" ", bg="light grey")
+    PlainDirectoryLabel = tk.Label(Plain_Folder, text=Dir_Width*" ", bg="light grey")
     PlainDirectoryLabel.grid(row=1, column=1, padx=Padding_Width)
 
-    PlainFileExplorer = tk.Button(PlainMainFrame, text="Select Input Folder", command=lambda: FileExplorer("Plain_Folder", "Input"))
+    PlainFileExplorer = tk.Button(Plain_Folder, text="Select Folder", command=lambda: FileExplorer("Plain_Folder", "Input"))
     PlainFileExplorer.grid(row=1, column=0)
     global PlainOutputFolder_Label
-    PlainOutputFolder_Label = tk.Label(PlainMainFrame, text=Dir_Width*" ", bg="light grey")
+    PlainOutputFolder_Label = tk.Label(Plain_Folder, text=Dir_Width*" ", bg="light grey")
     PlainOutputFolder_Label.grid(row=2, column=1, padx=Padding_Width)
-    PlainOutputFolder_Button = tk.Button(PlainMainFrame, text="Select Output Folder",
+    PlainOutputFolder_Button = tk.Button(Plain_Folder, text="Select Output Folder",
                                          command=lambda: FileExplorer("Plain_Folder", "Output"))
     PlainOutputFolder_Button.grid(row=2, column=0)
-    PlainSpectroRun = tk.Button(PlainMainFrame, text="Create Blank Spectrograms", command=lambda:PrintPlainSpectrograms())
+    PlainSpectroRun = tk.Button(Plain_Folder, text="Create Blank Spectrograms", command=lambda:PrintPlainSpectrograms())
     PlainSpectroRun.grid(row=3, column=0, columnspan=2)
-
+    
     ### Plain Spectrogram Generation - Selected Files ###
-    PlainSpectroAlt = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    PlainSpectroAlt = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     PlainNotebook.add(PlainSpectroAlt, text="Individual Files")
     PlainFileExplorerAlt = tk.Button(PlainSpectroAlt, text="Select Files", command=lambda: FileExplorer("Plain_Files", "Input"))
     PlainFileExplorerAlt.grid(row=1, column=0)
     PlainDirectoryLabelAlt = tk.Label(PlainSpectroAlt, text=Dir_Width*" ", bg="light grey")
     PlainDirectoryLabelAlt.grid(row=1, column=1, padx=Padding_Width)
-    PlainOutputAlt_Button = tk.Button(PlainSpectroAlt, text="Output Folder", command=lambda:FileExplorer("Plain_Files", "Output"))
+    PlainOutputAlt_Button = tk.Button(PlainSpectroAlt, text="Select Output Folder", command=lambda:FileExplorer("Plain_Files", "Output"))
     PlainOutputAlt_Button.grid(row=2, column = 0)
 
     global PlainOutputAlt_Label
@@ -2730,20 +2693,20 @@ try:
     PlainSpectroRunAlt = tk.Button(PlainSpectroAlt, text="Create Blank Spectrograms",
                                 command=lambda: PrintPlainSpectrogramsAlt())
     PlainSpectroRunAlt.grid(row=3, column=0, columnspan=2)
-    PlainSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
-    PlainNotebook.add(PlainSettingsFrame, text="Advanced Settings")
-    PlainInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
-    PlainNotebook.add(PlainInfoFrame, text="Info")
-
+    # PlainSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    # PlainNotebook.add(PlainSettingsFrame, text="Advanced Settings")
+    # PlainInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    # PlainNotebook.add(PlainInfoFrame, text="Info")
+    
     ### Timing Module ###
-    TimingTab = tk.Frame(gui)
+    TimingTab = tk.Frame(gui, width=MasterFrameWidth, height=MasterFrameHeight)
     notebook.add(TimingTab, text="Timing")
     TimingNotebook = ttk.Notebook(TimingTab)
     TimingNotebook.grid(row=1)
-    TimingMainFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
-    TimingNotebook.add(TimingMainFrame, text="Timing")
-    TimingSettings = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
-    TimingNotebook.add(TimingSettings, text="Advanced Settings")
+    TimingMainFrame = tk.Frame(TimingTab, width=MasterFrameWidth, height=MasterFrameHeight)
+    TimingNotebook.add(TimingMainFrame, text="Home")
+    # TimingSettings = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    # TimingNotebook.add(TimingSettings, text="Advanced Settings")
 
     TimingInput_Button = tk.Button(TimingMainFrame, text="Find Segmentations", command=lambda:FileExplorer("Timing", "Input"))
     TimingInput_Button.grid(row=0, column=0)
