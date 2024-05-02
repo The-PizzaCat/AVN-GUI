@@ -61,6 +61,11 @@ try:
     import seaborn as sns
     from matplotlib.figure import Figure
     import audioread
+    # import simple_webbrowser as swb
+    import webbrowser as wb
+    from tkinter.filedialog import asksaveasfile
+    import shutil
+
 
     def focus_in(Event):
         global LabelingBirdIDText
@@ -395,17 +400,11 @@ try:
                     global EndOfFolder
 
                     LabelingProgress_Text = tk.Label(LabelingMainFrame, text="", justify="center")
-                    LabelingProgress_Text.grid(row=5, column=0, columnspan=2)
+                    LabelingProgress_Text.grid(row=9, column=0, columnspan=2)
                     gui.update_idletasks()
                     OutputFolder = LabelingOutputFile_Text.cget("text")
 
                     for directory in segmentations_path:
-                        global LoadingBar_Massimo
-                        try:
-                            LoadingBar_Massimo.step(1)
-                            LoadingBar_Massimo.update()
-                        except: pass
-                        print(directory)
 
                         directory = directory.replace("\\", "/")
 
@@ -457,7 +456,7 @@ try:
                         LabelingProgress_Bar = ttk.Progressbar(LabelingMainFrame, orient="horizontal",
                                                                mode="determinate", maximum=100,
                                                                variable=LabelingProgress)
-                        LabelingProgress_Bar.grid(row=6, column=0, columnspan=2)
+                        LabelingProgress_Bar.grid(row=10, column=0, columnspan=2)
                         gui.update_idletasks()
 
                         LabelingProgress_Text.config(text="Loading Song Files...")
@@ -467,8 +466,7 @@ try:
                             LabelingProgress_Bar.update()
                             gui.update_idletasks()
                             SongIndex = segmentations.index[segmentations['files'] == song_file].tolist()
-                            file_path = segmentations.directory[SongIndex[0]].replace("\\", "/").replace("RobertsLab",
-                                                                                                         "ethan") + song_file
+                            file_path = segmentations.directory[SongIndex[0]].replace("\\", "/") + song_file
 
                             song = dataloading.SongFile(file_path)
                             song.bandpass_filter(int(bandpass_lower_cutoff_entry_Labeling.get()),
@@ -686,11 +684,15 @@ try:
 
     def LabelingDisplay(Direction):
         global label_FileID
-        global song_folder
+        global OutputFolder
         global hdbscan_df
         global LabelingDisplayFrame
         global LabelingDisplayWindow
         global EndOfFolder
+        global label_fig
+        global Label_CheckNumber
+
+
         if EndOfFolder == True:
             try:
                 LabelingDisplayFrame.destroy()
@@ -698,44 +700,71 @@ try:
 
         if Direction == "Start":
             try:
-                os.makedirs(song_folder + "/LabelingPhotos")
+                os.makedirs(OutputFolder + "/LabelingPhotos")
             except: pass
             LabelingDisplayWindow = tk.Toplevel(gui)
             LabelingPreviousButton = tk.Button(LabelingDisplayWindow, text="Previous", command=lambda: LabelingDisplay(Direction = "Left"))
             LabelingPreviousButton.grid(row=0, column=10)
             LabelingNextButton = tk.Button(LabelingDisplayWindow, text="Next", command= lambda: LabelingDisplay(Direction = "Right"))
             LabelingNextButton.grid(row=0, column=11)
-            LabelingSaveButton = tk.Button(LabelingDisplayWindow, text="Save", command=lambda: LabelingDisplaySave)
+            LabelingSaveButton = tk.Button(LabelingDisplayWindow, text="Save", command=lambda: LabelingDisplaySave())
             LabelingSaveButton.grid(row=0, column=12)
             label_FileID = 0
-        if Direction == "Left":
-            label_FileID -= 1
-        if Direction == "Right":
-            label_FileID += 1
 
-        try:
-            label_fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, song_folder, "",
-                                                                            song_file_index=label_FileID, figsize=(12, 4),fontsize=14)
+            label_fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, OutputFolder, "",
+                                                                                      song_file_index=label_FileID,
+                                                                                      figsize=(12, 4), fontsize=14)
+
             LabelingDisplayFrame = tk.Frame(LabelingDisplayWindow)
             LabelingDisplayFrame.grid(row=1, column=0, columnspan=21)
             label_canvas = FigureCanvasTkAgg(label_fig, master=LabelingDisplayFrame)  # A tk.DrawingArea.
             label_canvas.draw()
             label_canvas.get_tk_widget().grid()
-        except:
-            EndOfFolder = True
+        if Direction == "Left":
+            if label_FileID != 0:
+                label_FileID -= 1
+
+                label_fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, OutputFolder, "",
+                                                                                          song_file_index=label_FileID,
+                                                                                          figsize=(12, 4), fontsize=14)
+                LabelingDisplayFrame = tk.Frame(LabelingDisplayWindow)
+                LabelingDisplayFrame.grid(row=1, column=0, columnspan=21)
+                label_canvas = FigureCanvasTkAgg(label_fig, master=LabelingDisplayFrame)  # A tk.DrawingArea.
+                label_canvas.draw()
+                label_canvas.get_tk_widget().grid()
+        if Direction == "Right":
+            if label_FileID != int(Label_CheckNumber.get()):
+                label_FileID += 1
+
+                label_fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, OutputFolder, "",
+                                                                                song_file_index=label_FileID, figsize=(12, 4),fontsize=14)
+                LabelingDisplayFrame = tk.Frame(LabelingDisplayWindow)
+                LabelingDisplayFrame.grid(row=1, column=0, columnspan=21)
+                label_canvas = FigureCanvasTkAgg(label_fig, master=LabelingDisplayFrame)  # A tk.DrawingArea.
+                label_canvas.draw()
+                label_canvas.get_tk_widget().grid()
+        global FileName
+        FileName = hdbscan_df["files"].unique()[label_FileID][:-4]
+        def LabelingDisplayClose():
+            try:
+                shutil.rmtree(OutputFolder + "/LabelingPhotos")
+            except:
+                pass
+            try:
+                shutil.rmtree(OutputFolder + "/Labeling_temp")
+            except:
+                pass
+
+        LabelingDisplayWindow.protocol("WM_DELETE_WINDOW", LabelingDisplayClose())
+
         LabelingDisplayWindow.mainloop()
 
     def LabelingDisplaySave():
-        global label_FileID
-        global song_folder
-        global segmentations_path
-        hdbscan_df = pd.read_csv(segmentations_path)
-        fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(hdbscan_df, song_folder, "",
-                                                                                  song_file_index=label_FileID,
-                                                                                  figsize=(15, 4),
-                                                                                  fontsize=14)
-        fig.savefig(str(song_folder) + "/LabelingPhotos/" + str(song_file_name) + ".png")
-        print("Fig saved as " + str(song_file_name) + "!")
+        global label_fig
+        global LabelingBirdIDText
+        global FileName
+
+        f = asksaveasfile(initialfile=str(FileName)+'_LabeledSpectrogram.png',defaultextension=".png", filetypes=[("PNG Image", "*.png"),("All Files", "*.*")])
 
     def LabelingSavePhotos():
         global LabelingSaveAllCheck
@@ -787,6 +816,152 @@ try:
             time.sleep(3)
             LabelingSaveProgress.destroy()
 
+    def LabelingCheckSpectrograms():
+        global segmentations_path
+        global Bird_ID
+        global song_folder
+        global LabelingFileDisplay
+        global LabelingErrorMessage
+        global LabelingBirdIDText
+        global UMAP_Directories
+        global OutputFolder
+        global Label_CheckNumber
+
+        FilesToCheck = int(Label_CheckNumber.get())
+        OutputFolder = LabelingOutputFile_Text.cget("text")
+        for directory in segmentations_path:
+            directory = directory.replace("\\", "/")
+
+            dir_corrected = directory.split("/")[-1].replace("_seg_", "_label_")
+            dir_corrected = dir_corrected.replace("_wseg.csv", str(directory.split("/")[-2]) + "_labels.csv")
+            try:
+                os.makedirs(OutputFolder + "/Labeling_temp")
+            except:
+                pass
+            output_file = OutputFolder + "/Labeling_temp/" + dir_corrected  # e.g. "C:/where_I_want_the_labels_to_be_saved/Bird_ID_labels.csv"
+
+            def make_spec(syll_wav, hop_length, win_length, n_fft, amin, ref_db, min_level_db):
+                spectrogram = librosa.stft(syll_wav, hop_length=hop_length, win_length=win_length,
+                                           n_fft=n_fft)
+                spectrogram_db = librosa.amplitude_to_db(np.abs(spectrogram), amin=amin, ref=ref_db)
+
+                # normalize
+                S_norm = np.clip((spectrogram_db - min_level_db) / -min_level_db, 0, 1)
+
+                return S_norm
+
+            amin = 1e-5
+            ref_db = 20
+            min_level_db = -28  # ERROR! If a .wav file contains a sound that's too quiet, the audio.values variable for that row will be NULL, causing an error
+            win_length = 512  # the AVGN default is based on ms duration and sample rate, and it 441.
+            hop_length = 128  # the AVGN default is based on ms duration and sample rate, and it is 88.
+            n_fft = 512
+            K = 10
+            min_cluster_prop = 0.04
+            embedding_dim = 2
+
+            # load segmentations
+            global LabelingDirectoryText
+            segmentations_temp = pd.read_csv(LabelingDirectoryText.cget("text"))
+            segmentations_temp = segmentations_temp.rename(
+                columns={"onset": "onsets", "offset": "offsets", "cluster": "cluster", "file": "files"})
+            UniqueFiles_temp = pd.unique(segmentations_temp["files"])
+            UniqueFiles = UniqueFiles_temp[:FilesToCheck]
+            segmentations = segmentations_temp[segmentations_temp["files"].isin(UniqueFiles)]
+
+            # sometimes this padding can create negative onset times, which will cause errors.
+            # correct this by setting any onsets <0 to 0.
+            segmentations.onsets = segmentations.where(segmentations.onsets > 0, 0).onsets
+
+            # Add syllable audio to dataframe
+            syllable_dfs = pd.DataFrame()
+            # for directory in segmentations.directory.unique():
+
+            for song_file in segmentations.files.unique():
+                SongIndex = segmentations.index[segmentations['files'] == song_file].tolist()
+                file_path = segmentations.directory[SongIndex[0]].replace("\\", "/") + song_file
+
+                song = dataloading.SongFile(file_path)
+                song.bandpass_filter(int(bandpass_lower_cutoff_entry_Labeling.get()),
+                                     int(bandpass_upper_cutoff_entry_Labeling.get()))
+
+                syllable_df = segmentations[segmentations['files'] == song_file]
+                # this section is based on avn.signalprocessing.create_spectrogram_dataset.get_row_audio()
+                syllable_df["audio"] = [song.data[int(st * song.sample_rate): int(et * song.sample_rate)]
+                                        for st, et in
+                                        zip(syllable_df.onsets.values, syllable_df.offsets.values)]
+                # print(syllable_df)
+                syllable_dfs = pd.concat([syllable_dfs, syllable_df])
+
+            syllable_dfs['audio'] = [librosa.util.normalize(i) for i in syllable_dfs.audio.values]
+            global hdbscan_df
+            hdbscan_df = syllable_dfs
+
+            # compute spectrogram for each syllable
+            syllables_spec = []
+
+            for syllable in syllable_dfs.audio.values:
+                if len(syllable) > 0: \
+                        syllable_spec = make_spec(syllable,
+                                                  hop_length=int(hop_length_entry_Labeling.get()),
+                                                  win_length=int(win_length_entry_Labeling.get()),
+                                                  n_fft=int(n_fft_entry_Labeling.get()),
+                                                  ref_db=int(ref_db_entry_Labeling.get()),
+                                                  amin=float(a_min_entry_Labeling.get()),
+                                                  min_level_db=int(min_level_db_entry_Labeling.get()))
+                if syllable_spec.shape[1] > int(max_spec_size_entry_Labeling.get()):
+                    print(
+                        "Long Syllable Corrections! Spectrogram Duration = " + str(
+                            syllable_spec.shape[1]))
+                    syllable_spec = syllable_spec[:, :int(max_spec_size_entry_Labeling.get())]
+
+                syllables_spec.append(syllable_spec)
+
+            # normalize spectrograms
+            def norm(x):
+                return (x - np.min(x)) / (np.max(x) - np.min(x))
+
+            syllables_spec_norm = [norm(i) for i in syllables_spec]
+
+            # Pad spectrograms for uniform dimensions
+            spec_lens = [np.shape(i)[1] for i in syllables_spec]
+            pad_length = np.max(spec_lens)
+
+            syllables_spec_padded = []
+
+            for spec in syllables_spec_norm:
+                to_add = pad_length - np.shape(spec)[1]
+                pad_left = np.floor(float(to_add) / 2).astype("int")
+                pad_right = np.ceil(float(to_add) / 2).astype("int")
+                spec_padded = np.pad(spec, [(0, 0), (pad_left, pad_right)], 'constant', constant_values=0)
+                syllables_spec_padded.append(spec_padded)
+
+            # flatten the spectrograms into 1D
+            specs_flattened = [spec.flatten() for spec in syllables_spec_padded]
+            specs_flattened_array = np.array(specs_flattened)
+
+            # Embed
+            mde = pymde.preserve_neighbors(specs_flattened_array, n_neighbors=K,
+                                           embedding_dim=embedding_dim)
+            embedding = mde.embed()
+
+            # cluster
+            min_cluster_size = math.floor(embedding.shape[0] * float(min_cluster_prop_entry_Labeling.get()))
+            clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, core_dist_n_jobs=1,
+                                        min_samples=int(min_samples_entry_Labeling.get())).fit(embedding)
+
+            hdbscan_df["labels"] = clusterer.labels_
+
+            hdbscan_df["X"] = embedding[:, 0]
+            hdbscan_df["Y"] = embedding[:, 1]
+            hdbscan_df["labels"] = hdbscan_df['labels'].astype("category")
+
+            output_file = OutputFolder + "/Labeling_temp/" + dir_corrected
+            hdbscan_df.to_csv(output_file)
+        global EndOfFolder
+        EndOfFolder = False
+        LabelingDisplay("Start")
+
     def LabelingSpectrograms():
         global LabelingSpectrogramFiles
         global LabelingFileDisplay
@@ -814,8 +989,7 @@ try:
             for i in range(i_end):
                 fig, ax, song_file_name = avn.plotting.plot_spectrogram_with_labels(LabelingData,
                                                                                     LabelingData["directory"][
-                                                                                        i].replace("\\", "").replace(
-                                                                                        "RobertsLab", "ethan"), "",
+                                                                                        i].replace("\\", ""), "",
                                                                                     song_file_index=i,
                                                                                     figsize=(15, 4),
                                                                                     fontsize=14)
@@ -1003,7 +1177,7 @@ try:
             # Make dataframe for current directory
             syll_df_temp = syll_df[syll_df["directory"] == directory]
             syntax_data = syntax.SyntaxData(Bird_ID, syll_df_temp)
-            dir_corrected = directory.replace("\\", "/").replace("RobertsLab","ethan")[:-1]
+            dir_corrected = directory.replace("\\", "/")[:-1]
             syntax_data.add_file_bounds(dir_corrected)
             syntax_data.add_gaps(min_gap=float(min_gap_entry_Syntax.get()))
             gaps_df = syntax_data.get_gaps_df()
@@ -1184,11 +1358,11 @@ try:
         print("done")
 
     def MoreInfo(Event):
-        # print(Event.widget)
+        print(Event.widget)
         Text_wraplength = 300
 
         SettingsDict = {
-                        "6": {"2":"Lower cutoff frequency in Hz for a hamming window " \
+                        "10": {"2":"Lower cutoff frequency in Hz for a hamming window " \
                                    "bandpass filter applied to the audio data before generating " \
                                    "spectrograms. Frequencies below this value will be filtered out"+'!bandpass_lower_cutoff',
                             "4":"Upper cutoff frequency in Hz for a hamming window bandpass" \
@@ -1228,7 +1402,7 @@ try:
                                    "the spectrogram without affecting the frequency resolution"+"!hop_length",
                             "18":"Maximum frequency in Hz used to estimate fundamental frequency " \
                                    "with the YIN algorithm"+"!max_spec_size"},
-                        "7": {"2":"The size of local neighborhood (in terms of number of neighboring sample points)" \
+                        "11": {"2":"The size of local neighborhood (in terms of number of neighboring sample points)" \
                                    " used for manifold approximation. Larger values result in more global views " \
                                    "of the manifold, while smaller values result in more local data being " \
                                    "preserved. In general values should be in the range 2 to 100"+'!n_neighbors',
@@ -1249,7 +1423,7 @@ try:
                                    "number generator. Specifying a random state is the only way " \
                                    "to ensure that you can reproduce an identical UMAP with the " \
                                    "same data set multiple times"+'!random_state'},
-                        "8": {"2":'Minimum fraction of syllables that can constitute a cluster. '
+                        "12": {"2":'Minimum fraction of syllables that can constitute a cluster. '
                                               'For example, in a dataset of 1000 syllables, there need to be '
                                               'at least 40 instances of a particular syllable for that to be '
                                               'considered a cluster. Single linkage splits that contain fewer '
@@ -1261,7 +1435,7 @@ try:
                                               'value of \"min_samples\" you provide, the more conservative '
                                               'the clustering – more points will be declared as noise, and '
                                               'clusters will be restricted to progressively more dense areas'+"!min_samples"},
-                        "12": {"2":"Length of window over which to calculate each feature in samples"+'!win_length',
+                        "16": {"2":"Length of window over which to calculate each feature in samples"+'!win_length',
                             "4":"Number of samples to advance between windows"+'!hop_length',
                             "6":"Length of the transformed axis of the output. If n is smaller than " \
                                                "the length of the win_length, the input is cropped"+'!n_fft',
@@ -1272,7 +1446,7 @@ try:
                             "14":"Baseline amplitude used to calculate amplitude in dB"+'!baseline_amp',
                             "16":"Maximum frequency in Hz used to estimate fundamental frequency " \
                                                "with the YIN algorithm"+'!fmax_yin'},
-                        "15": {"2":"Minimum duration in seconds for a gap between syllables "
+                        "19": {"2":"Minimum duration in seconds for a gap between syllables "
                                      "to be considered syntactically relevant. This value should "
                                      "be selected such that gaps between syllables in a bout are "
                                      "shorter than min_gap, but gaps between bouts are longer than min_gap"+"!min_gap"}
@@ -1282,35 +1456,35 @@ try:
         Setting = str(Event.widget).split("n")[-1]
 
         ### Labeling Spectrogram Generation Parameters ###
-        if Module == "6":
+        if Module == "10":
             LabelingSpectrogramDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
             LabelingSpectrogramDialog.update()
             LabelingSpectrogramTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
             LabelingSpectrogramTitle.update()
 
         ### UMAP Parameters ###
-        if Module == "7":
+        if Module == "11":
             LabelingUMAPDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
             LabelingUMAPDialog.update()
             LabelingUMAPTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
             LabelingUMAPTitle.update()
 
         ### Clustering Parameters ###
-        if Module == "8":
+        if Module == "12":
             LabelingClusterDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
             LabelingClusterDialog.update()
             LabelingClusterTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
             LabelingClusterTitle.update()
 
         ### Acoustic Features ###
-        if Module == "12":
+        if Module == "16":
             AcousticSettingsDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
             AcousticSettingsDialog.update()
             AcousticsSettingsDialogTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
             AcousticsSettingsDialogTitle.update()
 
         ### Syntax ###
-        if Module == "15":
+        if Module == "19":
             SyntaxDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
             SyntaxDialog.update()
             SyntaxDialogTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
@@ -1388,52 +1562,52 @@ try:
                 ErrorLabel.config(text="Invalid Input: Please Enter An Integer")
                 Widget.config(bg="red")
 
-    def Extra_Labeling():
-        global LabelingExtra_Input_Text
-        # global LabelingExtra_Output_Text
-        global LabelingBirdIDText
-        global segmentations_path
-        global LabelingOutputFile_Text
-        global LoadingBar_Massimo
-
-        # LabelingBirdIDText.config(text=LabelingExtra_BirdID)
-        # LabelingBirdIDText.update()
-        Seg_File_List = glob.glob(LabelingExtra_Input_Text.cget("text")+"/**/*.csv", recursive=True)
-        print(Seg_File_List)
-        Master_Output = pd.DataFrame()
-        LoadingBar_Massimo = ttk.Progressbar(LabelingMainFrame, mode="determinate", maximum=len(Seg_File_List), orient="horizontal")
-        LoadingBar_Massimo.grid(row=11)
-        gui.update_idletasks()
-        segmentations_path = tuple(Seg_File_List)
-        Labeling()
-
-        for file in Seg_File_List:
-            # temp_dir = LabelingOutputFile_Text.cget("text").replace("\\","/").split("/")[:-1]
-            # Out_dir = ""
-            # for a in temp_dir:
-            #     Out_dir = Out_dir+a+"/"
-            # LabelingOutputFile_Text.config(text=Out_dir)
-            # LabelingOutputFile_Text.update()
-            Out_dir = LabelingOutputFile_Text.cget("text")
-
-            LoadingBar.step(1)
-            LoadingBar.update()
-            dir_files = glob.glob(Out_dir+"/Labeling/")
-            print("-----")
-            for csv in dir_files:
-                print(csv)
-                Label_Data = pd.read_csv(csv)
-                counts = Label_Data.value_counts("labels")
-                print(counts)
-                Output_df = pd.DataFrame(counts)
-                Master_Output.join([Master_Output, Output_df])
-        # print(LabelingExtra_Output_Text.cget("text"))
-        Master_Output.to_csv(LabelingOutputFile_Text.cget("text")+"Master_Output.csv")
-        print("done!")
+    # def Extra_Labeling():
+    #     global LabelingExtra_Input_Text
+    #     # global LabelingExtra_Output_Text
+    #     global LabelingBirdIDText
+    #     global segmentations_path
+    #     global LabelingOutputFile_Text
+    #     global LoadingBar_Massimo
+    #
+    #     # LabelingBirdIDText.config(text=LabelingExtra_BirdID)
+    #     # LabelingBirdIDText.update()
+    #     Seg_File_List = glob.glob(LabelingExtra_Input_Text.cget("text")+"/**/*.csv", recursive=True)
+    #     print(Seg_File_List)
+    #     Master_Output = pd.DataFrame()
+    #     LoadingBar_Massimo = ttk.Progressbar(LabelingMainFrame, mode="determinate", maximum=len(Seg_File_List), orient="horizontal")
+    #     LoadingBar_Massimo.grid(row=11)
+    #     gui.update_idletasks()
+    #     segmentations_path = tuple(Seg_File_List)
+    #     Labeling()
+    #
+    #     for file in Seg_File_List:
+    #         # temp_dir = LabelingOutputFile_Text.cget("text").replace("\\","/").split("/")[:-1]
+    #         # Out_dir = ""
+    #         # for a in temp_dir:
+    #         #     Out_dir = Out_dir+a+"/"
+    #         # LabelingOutputFile_Text.config(text=Out_dir)
+    #         # LabelingOutputFile_Text.update()
+    #         Out_dir = LabelingOutputFile_Text.cget("text")
+    #
+    #         LoadingBar.step(1)
+    #         LoadingBar.update()
+    #         dir_files = glob.glob(Out_dir+"/Labeling/")
+    #         print("-----")
+    #         for csv in dir_files:
+    #             print(csv)
+    #             Label_Data = pd.read_csv(csv)
+    #             counts = Label_Data.value_counts("labels")
+    #             print(counts)
+    #             Output_df = pd.DataFrame(counts)
+    #             Master_Output.join([Master_Output, Output_df])
+    #     # print(LabelingExtra_Output_Text.cget("text"))
+    #     Master_Output.to_csv(LabelingOutputFile_Text.cget("text")+"Master_Output.csv")
+    #     print("done!")
 
     ### Initialize gui ###
     gui = tk.Tk()
-    gui.title("AVN Segmentation and Labeling")
+    gui.title("AVN GUI")
     gui.resizable(False, False)
 
     ParentStyle = ttk.Style()
@@ -1442,45 +1616,86 @@ try:
     notebook = ttk.Notebook(gui, style='Parent.TNotebook.Tab')
     notebook.grid()
 
-    MasterFrameWidth = 600
-    MasterFrameHeight = 300
+    MasterFrameWidth = 1000
+    MasterFrameHeight = 500
 
     Dir_Width = 35
     BirdID_Width = 10
     Padding_Width = 10
 
+    ### Home Tab ###
+    HomeTab = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
+    notebook.add(HomeTab, text="Home")
+    HomeNotebook = ttk.Notebook(HomeTab)
+    HomeNotebook.grid()
+    WelcomeTab = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
+    HomeNotebook.add(WelcomeTab, text="Welcome!")
+    MoreInfoTab = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
+    HomeNotebook.add(MoreInfoTab, text="More Info")
+    LinksTab = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
+    HomeNotebook.add(LinksTab, text="Helpful Links")
+
+    # Welcome Tab #
+    WelcomeMessage = tk.Label(WelcomeTab, text="Welcome to the AVN GUI! \n \n If this is your first time using the GUI,\n please "
+                                               "refer to the \"More Info\" tab \n to get started.", font=("Arial", 20)).grid()
+
+    # More Info Tab #
+    More_Info_Title = tk.Label(MoreInfoTab, text="What does this GUI do?", font=("Arial", 20,"bold")).grid(row=0, column=0, columnspan=3)
+    More_Info_Body = tk.Label(MoreInfoTab, text="Labeling:"+
+                                                "\nAcoustic Feature Calculations:"+
+                                                "\nSyntax Analysis:"+
+                                                "\nTiming Analysis:", justify="left").grid(row=1, column=0)
+
+    # Helpful Links Tab #
+    HelpfulLinks = tk.Label(LinksTab, text="Example hyperlink", fg="blue", cursor="hand2")
+    HelpfulLinks.grid()
+    HelpfulLinks.bind("<Button-1>", lambda e: wb.open_new_tab("http://www.google.com"))
+
+
     ### Labeling Window Initialization ###
     # Labeling Features
-    LabelingFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    LabelingFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     notebook.add(LabelingFrame, text="Labeling")
-    LabelingMainFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    LabelingMainFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     LabelingNotebook = ttk.Notebook(LabelingFrame)
     LabelingNotebook.grid(row=1)
     LabelingNotebook.add(LabelingMainFrame, text="Home")
-    LabelingSpectrogram_UMAP = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    LabelingSpectrogram_UMAP = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     LabelingNotebook.add(LabelingSpectrogram_UMAP, text="Generate Spectrograms")
-    LabelingBulkSave = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
 
-    # The LabelingBulkSave tab has been hidden for now. Not sure if it's needed
-
+    LabelingBulkSave = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     LabelingNotebook.add(LabelingBulkSave, text="Save Many Spectrograms")
-    LabelingSettingsMaster = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+
+    LabelingSettingsMaster = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     LabelingNotebook.add(LabelingSettingsMaster, text="Settings")
 
     # Labeling Settings
     LabelingSettingsNotebook = ttk.Notebook(LabelingSettingsMaster, style='Parent.TNotebook.Tab')
     LabelingSettingsNotebook.grid()
-    LabelingSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    LabelingSettingsFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     LabelingSettingsNotebook.add(LabelingSettingsFrame, text="Spectrogram Settings")
-    LabelingUMAPSettings = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    LabelingUMAPSettings = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     LabelingSettingsNotebook.add(LabelingUMAPSettings, text="UMAP Settings")
     LabelingClusterSettings = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     LabelingSettingsNotebook.add(LabelingClusterSettings, text="Clustering Settings")
 
 ###############################################
     # Main Labeling Window
+    Labeling_SpectrogramCheck = tk.Button(LabelingMainFrame, text="Check Spectrograms", command=lambda:LabelingCheckSpectrograms())
+    Labeling_SpectrogramCheck.grid(row=6, column=0, columnspan=2)
+
+    Labeling_Padding = tk.Label(LabelingMainFrame, text="", font=("Arial", 20)).grid(row=4)
+    Label_CheckLabel = tk.Label(LabelingMainFrame, text="Number of files to visually inspect:").grid(row=5, column=0)
+    global Label_CheckNumber
+    Label_CheckNumber = StringVar()
+    Label_CheckNumber.set("5")
+    Labeling_SpectrogramCheckNumber = tk.Spinbox(LabelingMainFrame,from_=1, to=99, textvariable=Label_CheckNumber, width=15)
+    Labeling_SpectrogramCheckNumber.grid(row=5, column=1, sticky="W",padx=Padding_Width)
+
+    Labeling_Padding2 = tk.Label(LabelingMainFrame, text="", font=("Arial", 20)).grid(row=7)
+
     LabelingButton = tk.Button(LabelingMainFrame, text="Run", command = lambda : Labeling())
-    LabelingButton.grid(row=4, column=0, columnspan=2)
+    LabelingButton.grid(row=8, column=0, columnspan=2)
 
     global LabelingBirdIDText
     LabelingBirdIDText = tk.Entry(LabelingMainFrame, font=("Arial", 15), justify="center", fg="grey", width=BirdID_Width)
@@ -1998,10 +2213,10 @@ try:
 
     ### Single File Acoustic Features Window ###
 
-    AcousticsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    AcousticsFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     notebook.add(AcousticsFrame, text="Acoustic Features")
 
-    AcousticsMainFrameSingle = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    AcousticsMainFrameSingle = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     AcousticsNotebook = ttk.Notebook(AcousticsFrame)
     AcousticsNotebook.grid(row=1)
     AcousticsNotebook.add(AcousticsMainFrameSingle, text="Single Song Interval")
@@ -2076,16 +2291,37 @@ try:
     global CheckAll
     CheckAll = IntVar()
 
-    def CheckAllBoxes(CheckAll):
-        global RunGoodness
-        global RunMean_frequency
-        global RunEntropy
-        global RunAmplitude
-        global RunAmplitude_modulation
-        global RunFrequency_modulation
-        global RunPitch
-        ButtonNameList = [RunGoodness,RunMean_frequency,RunEntropy,RunAmplitude,RunAmplitude_modulation,RunFrequency_modulation,RunPitch]
-
+    def CheckAllBoxes(CheckAll, Mode):
+        if Mode == "Interval":
+            global RunGoodness
+            global RunMean_frequency
+            global RunEntropy
+            global RunAmplitude
+            global RunAmplitude_modulation
+            global RunFrequency_modulation
+            global RunPitch
+            ButtonNameList = [RunGoodness,RunMean_frequency,RunEntropy,RunAmplitude,RunAmplitude_modulation,RunFrequency_modulation,RunPitch]
+        if Mode == "Multi":
+            global MultiRunGoodness
+            global MultiRunMean_frequency
+            global MultiRunEntropy
+            global MultiRunAmplitude
+            global MultiRunAmplitude_modulation
+            global MultiRunFrequency_modulation
+            global MultiRunPitch
+            ButtonNameList = [MultiRunGoodness, MultiRunMean_frequency, MultiRunEntropy, MultiRunAmplitude,
+                                   MultiRunAmplitude_modulation,
+                                   MultiRunFrequency_modulation, MultiRunPitch]
+        if Mode == "RunAll":
+            global RunAll_RunGoodness
+            global RunAll_RunMean_frequency
+            global RunAll_RunEntropy
+            global RunAll_RunAmplitude
+            global RunAll_RunAmplitude_modulation
+            global RunAll_RunFrequency_modulation
+            global RunAll_RunPitch
+            ButtonNameList = [RunAll_RunGoodness, RunAll_RunMean_frequency, RunAll_RunEntropy, RunAll_RunAmplitude, RunAll_RunAmplitude_modulation,
+                              RunAll_RunFrequency_modulation, RunAll_RunPitch]
         if CheckAll.get() == 1:
             for checkbox in ButtonNameList:
                 checkbox.set(1)
@@ -2094,7 +2330,7 @@ try:
                 checkbox.set(0)
 
     StartRow = 6
-    CheckAll_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text='Select All', variable=CheckAll, command=lambda:CheckAllBoxes(CheckAll))
+    CheckAll_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text='Select All', variable=CheckAll, command=lambda:CheckAllBoxes(CheckAll,"Interval"))
     CheckAll_CheckBox.grid(row=StartRow, column=1, columnspan=2)
     Goodness_CheckBox = tk.Checkbutton(AcousticsMainFrameSingle, text= "Goodness", anchor=tk.W, variable=RunGoodness)
     Goodness_CheckBox.grid(row=StartRow+1, column=1, columnspan=2)
@@ -2118,9 +2354,9 @@ try:
 
     ### Multiple Syllable Acoustic Features Window ###
 
-    AcousticsMainFrameMulti = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    AcousticsMainFrameMulti = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     AcousticsNotebook.add(AcousticsMainFrameMulti, text="Multiple Syllables")
-    AcousticsSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    AcousticsSettingsFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     AcousticsNotebook.add(AcousticsSettingsFrame, text="Advanced Settings")
     # AcousticsInfoFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     # AcousticsNotebook.add(AcousticsInfoFrame, text="Info")
@@ -2340,7 +2576,7 @@ try:
     global MultiCheckAll
     MultiCheckAll = IntVar()
 
-    def MultiCheckAllBoxes(CheckAll):
+    def MultiCheckAllBoxes(MultiCheckAll):
         global MultiRunGoodness
         global MultiRunMean_frequency
         global MultiRunEntropy
@@ -2360,7 +2596,7 @@ try:
 
     MultiSettings_StartRow = 5
     MultiCheckAll_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text='Select All', variable=MultiCheckAll,
-                                       command=lambda: MultiCheckAllBoxes(MultiCheckAll))
+                                       command=lambda: CheckAllBoxes(MultiCheckAll,"Multi"))
     MultiCheckAll_CheckBox.grid(row=MultiSettings_StartRow, column=1, columnspan=1)
     MultiGoodness_CheckBox = tk.Checkbutton(AcousticsMainFrameMulti, text="Goodness", anchor=tk.W, variable=MultiRunGoodness)
     MultiGoodness_CheckBox.grid(row=MultiSettings_StartRow+1, column=1, columnspan=1)
@@ -2389,13 +2625,13 @@ try:
     SyntaxFrame = tk.Frame(gui)
     notebook.add(SyntaxFrame, text="Syntax")
 
-    SyntaxMainFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    SyntaxMainFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     SyntaxNotebook = ttk.Notebook(SyntaxFrame)
     SyntaxNotebook.grid(row=1)
     SyntaxNotebook.add(SyntaxMainFrame, text="Home")
-    SyntaxSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    SyntaxSettingsFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     SyntaxNotebook.add(SyntaxSettingsFrame, text="Advanced Settings")
-    # SyntaxInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    # SyntaxInfoFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     # SyntaxNotebook.add(SyntaxInfoFrame, text="Info")
 
     SyntaxFileButton = tk.Button(SyntaxMainFrame, text="Select Labeling File", command=lambda:FileExplorer("Syntax", "Input"))
@@ -2657,7 +2893,7 @@ try:
     PlainSpectrograms = tk.Frame(gui, width=MasterFrameWidth, height=MasterFrameHeight)
     notebook.add(PlainSpectrograms, text="Plain Spectrograms")
 
-    Plain_Folder = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    Plain_Folder = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     PlainNotebook = ttk.Notebook(PlainSpectrograms)
     PlainNotebook.grid(row=1)
     PlainNotebook.add(Plain_Folder, text="Whole Folder")
@@ -2693,9 +2929,9 @@ try:
     PlainSpectroRunAlt = tk.Button(PlainSpectroAlt, text="Create Blank Spectrograms",
                                 command=lambda: PrintPlainSpectrogramsAlt())
     PlainSpectroRunAlt.grid(row=3, column=0, columnspan=2)
-    # PlainSettingsFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    # PlainSettingsFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     # PlainNotebook.add(PlainSettingsFrame, text="Advanced Settings")
-    # PlainInfoFrame = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    # PlainInfoFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     # PlainNotebook.add(PlainInfoFrame, text="Info")
     
     ### Timing Module ###
@@ -2705,7 +2941,7 @@ try:
     TimingNotebook.grid(row=1)
     TimingMainFrame = tk.Frame(TimingTab, width=MasterFrameWidth, height=MasterFrameHeight)
     TimingNotebook.add(TimingMainFrame, text="Home")
-    # TimingSettings = tk.Frame(width =MasterFrameWidth, height=MasterFrameHeight)
+    # TimingSettings = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
     # TimingNotebook.add(TimingSettings, text="Advanced Settings")
 
     TimingInput_Button = tk.Button(TimingMainFrame, text="Find Segmentations", command=lambda:FileExplorer("Timing", "Input"))
@@ -2727,6 +2963,100 @@ try:
 
     RunTiming = tk.Button(TimingMainFrame, text="Run Timing", command=lambda:Timing())
     RunTiming.grid(row=3, column=0, columnspan=3)
+
+    # Run Everything Tab #
+    RunAllTab = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
+    notebook.add(RunAllTab, text="Run All")
+    RunAll_Title = tk.Label(RunAllTab, text="This will calculate the complete AVN feature set \n"
+                                            "for all labeled songs in the selected label table. \n \n"
+                                            "Settings and parameters for these features can be adjusted \n"
+                                            "within each feature's dedicated tab", font=("Arial",15)).grid(row=0, columnspan=2)
+    RunAllPadding = tk.Label(RunAllTab, text="", font=("Arial",20)).grid(row=1)
+
+    RunAll_ImportantFrame = tk.Frame(RunAllTab, width=400, height=200, highlightbackground="black", highlightthickness=1)
+    RunAll_ImportantFrame.grid(row=2, column=0, columnspan=2)
+    RunAll_Input = tk.Button(RunAll_ImportantFrame, text="Input labeling file:", command=lambda:FileExplorer("RunAll","Input"))
+    RunAll_Input.grid(row=2, column=0)
+    RunAll_InputFileDisplay = tk.Label(RunAll_ImportantFrame, text=Dir_Width*" ", bg="light grey")
+    RunAll_InputFileDisplay.grid(row=2, column=1)
+
+    RunAll_BirdID_Label = tk.Label(RunAll_ImportantFrame, text="Bird ID:").grid(row=3, column=0)
+    RunAll_BirdID_Entry = tk.Entry(RunAll_ImportantFrame, font=("Arial", 15), justify="center", fg="grey", bg="white",
+                                   width=BirdID_Width)
+    RunAll_BirdID_Entry.grid(row=3, column=1)
+    RunAll_BirdID_Entry.insert(0, "Bird ID")
+    RunAll_BirdID_Entry.bind("<FocusIn>", focus_in)
+    RunAll_BirdID_Entry.bind("<FocusOut>", focus_out)
+
+    RunAll_Output = tk.Button(RunAll_ImportantFrame, text="Output Destination:",command=lambda:FileExplorer("RunAll","Output"))
+    RunAll_Output.grid(row=4, column=0)
+    RunAll_OutputFileDisplay = tk.Label(RunAll_ImportantFrame, text=Dir_Width*" ", bg="light grey")
+    RunAll_OutputFileDisplay.grid(row=4, column=1)
+
+    RunAllPadding2 = tk.Label(RunAllTab, text="", font=("Arial",20)).grid(row=5)
+
+    RunAll_StartRow = 6
+    #
+    # global RunAll_CheckAll
+    # global RunAll_RunGoodness
+    # global RunAll_RunMean_frequency
+    # global RunAll_RunEntropy
+    # global RunAll_RunAmplitude
+    # global RunAll_RunAmplitude_modulation
+    # global RunAll_RunFrequency_modulation
+    # global RunAll_RunPitch
+    #
+    # RunAll_CheckAll = IntVar()
+    # RunAll_RunGoodness = IntVar()
+    # RunAll_RunMean_frequency = IntVar()
+    # RunAll_RunEntropy = IntVar()
+    # RunAll_RunAmplitude = IntVar()
+    # RunAll_RunAmplitude_modulation = IntVar()
+    # RunAll_RunFrequency_modulation = IntVar()
+    # RunAll_RunPitch = IntVar()
+    #
+    # RunAll_AcousticsLabel = tk.Label(RunAllTab, text="Select Acoustic Features to analyze:").grid(row=RunAll_StartRow-1)
+    # RunAll_CheckAllAcoustics = tk.Checkbutton(RunAllTab, text="Select All", variable=RunAll_CheckAll,
+    #                                    command=lambda: CheckAllBoxes(RunAll_CheckAll,"RunAll"))
+    # RunAll_CheckAllAcoustics.grid(row=RunAll_StartRow, column=0)
+    # RunAll_Goodness_CheckBox = tk.Checkbutton(RunAllTab, text="Goodness", anchor=tk.W, variable=RunAll_RunGoodness)
+    # RunAll_Goodness_CheckBox.grid(row=RunAll_StartRow + 1, column=0)
+    # RunAll_Mean_frequency_CheckBox = tk.Checkbutton(RunAllTab, text="Mean Frequency", anchor=tk.W,variable=RunAll_RunMean_frequency)
+    # RunAll_Mean_frequency_CheckBox.grid(row=RunAll_StartRow + 2, column=0)
+    # RunAll_Entropy_CheckBox = tk.Checkbutton(RunAllTab, text="Entropy", anchor=tk.W, variable=RunAll_RunEntropy)
+    # RunAll_Entropy_CheckBox.grid(row=RunAll_StartRow + 3, column=0)
+    # RunAll_Amplitude_CheckBox = tk.Checkbutton(RunAllTab, text="Amplitude", anchor=tk.W, variable=RunAll_RunAmplitude)
+    # RunAll_Amplitude_CheckBox.grid(row=RunAll_StartRow + 4, column=0)
+    # RunAll_Amplitude_modulation_CheckBox = tk.Checkbutton(RunAllTab, text="Amplitude Modulation", anchor=tk.W,variable=RunAll_RunAmplitude_modulation)
+    # RunAll_Amplitude_modulation_CheckBox.grid(row=RunAll_StartRow + 5, column=0)
+    # RunAll_Frequency_modulation_CheckBox = tk.Checkbutton(RunAllTab, text="Frequency Modulation", anchor=tk.W,variable=RunAll_RunFrequency_modulation)
+    # RunAll_Frequency_modulation_CheckBox.grid(row=RunAll_StartRow + 6, column=0)
+    # RunAll_Pitch_CheckBox = tk.Checkbutton(RunAllTab, text="Pitch", anchor=tk.W, variable=RunAll_RunPitch)
+    # RunAll_Pitch_CheckBox.grid(row=RunAll_StartRow + 7, column=0)
+    #
+    # global RunAll_DropCalls
+    # RunAll_DropCalls = IntVar()
+    # RunAll_AcousticsTitle = tk.Label(RunAllTab, text="Syntax Settings:").grid(row=RunAll_StartRow-1, column=1)
+    # RunAll_DropCalls = tk.Checkbutton(RunAllTab, text="Drop Calls", variable=RunAll_DropCalls)
+    # RunAll_DropCalls.grid(row=RunAll_StartRow, column=1)
+    # global RunAll_CountMatrix
+    # RunAll_CountMatrix = IntVar()
+    # RunAll_GenerateCountMatrix = tk.Checkbutton(RunAllTab, text="Generate Matrix Heatmap", variable=RunAll_CountMatrix)
+    # RunAll_GenerateCountMatrix.grid(row=RunAll_StartRow+1, column=1)
+    # global RunAll_ProbabilityMatrix
+    # RunAll_ProbabilityMatrix = IntVar()
+    # RunAll_GenerateProbabilityMatrix = tk.Checkbutton(RunAllTab, text="Generate Probability Heatmap", variable=RunAll_ProbabilityMatrix)
+    # RunAll_GenerateProbabilityMatrix.grid(row=RunAll_StartRow + 2, column=1)
+    # global RunAll_Raster
+    # RunAll_Raster = IntVar()
+    # RunAll_GenerateRaster = tk.Checkbutton(RunAllTab, text="Generate Raster Plot",
+    #                                                   variable=RunAll_Raster)
+    # RunAll_GenerateRaster.grid(row=RunAll_StartRow + 3, column=1)
+
+    def RunAllModules():
+        print("test")
+    RunAll_RunButton = tk.Button(RunAllTab, text="Run", command=lambda:RunAllModules())
+    RunAll_RunButton.grid(row=RunAll_StartRow+8, column=0, columnspan=2)
 
     ttk.Style().theme_use("clam")
     gui.mainloop()
