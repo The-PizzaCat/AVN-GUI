@@ -12,7 +12,7 @@
 # pyinstaller --collect-submodules "sklearn" --icon="C:/Users/ethan/Desktop/Animal__ZebraFinch1.ico" gui.py
 
 global gui_version
-gui_version = "0.1.0a"
+gui_version = "0.2.0a"
 global avn_version
 avn_version = "0.5.0"
 
@@ -56,7 +56,10 @@ import datetime
 from datetime import date
 import umap.umap_ as umap
 import numpy
+import random
 pd.options.mode.chained_assignment = None
+import traceback
+
 
 
 def focus_in(Event):
@@ -398,6 +401,7 @@ def FileExplorer(Module, Type):
     elif Module == "Similarity_Out1":
         if Type == "Input":
             global SimilarityInput2
+            global Num_SyllablestoCompare_1
             InputDir_temp = filedialog.askdirectory()
             if len(InputDir_temp) > 0:
                 SimilarityInput2.config(text=InputDir_temp)
@@ -416,6 +420,7 @@ def FileExplorer(Module, Type):
     elif Module == "Similarity_Out2":
         if Type == "Input":
             global SimilarityInput3
+            global Num_SyllablestoCompare_2
             InputDir_temp = filedialog.askdirectory()
             if len(InputDir_temp) > 0:
                 SimilarityInput3.config(text=InputDir_temp)
@@ -431,6 +436,16 @@ def FileExplorer(Module, Type):
             if len(OutputDir_temp) > 0:
                 SimilarityOutput3.config(text=OutputDir_temp)
                 SimilarityOutput3.update()
+    elif Module == "Similarity_Seg":
+        InputDir_temp = filedialog.askopenfilename(filetypes=[(".csv files", "*.csv")])
+        if len(InputDir_temp) > 0:
+            SimilaritySegTable2.config(text=InputDir_temp)
+            SimilaritySegTable2.update()
+    elif Module == "Similarity_Seg2":
+        InputDir_temp = filedialog.askopenfilename(filetypes=[(".csv files", "*.csv")])
+        if len(InputDir_temp) > 0:
+            SimilaritySegTable3.config(text=InputDir_temp)
+            SimilaritySegTable3.update()
     elif Module == "RunAll":
         if Type == "Input":
             RunAllInput = filedialog.askopenfilename(filetypes=[(".csv files", "*.csv")])
@@ -507,9 +522,7 @@ def Labeling():
     global UMAP_Directories
     global OutputFolder
     global LabelingSongLocation
-    Song_Location = LabelingSongLocation.cget("text")
-    if Song_Location[-1] != "/" or Song_Location[-1] != "\\":
-        Song_Location = Song_Location+"/"
+
     UMAP_Directories = []
     Bird_ID = LabelingBirdIDText.get()
 
@@ -538,306 +551,396 @@ def Labeling():
             LabelingFileDisplay.cget("text")
         except:
             LabelingErrorMessage.config(text="Missing segmentation folder")
-        LabelingErrorMessage.update()
+            LabelingErrorMessage.update()
         if seg_path_check.search(segmentations_path[0]) != None:
             if seg_path_check.search(LabelingOutputFile_Text.cget("text")) == None:
                 LabelingErrorMessage.config(text="Missing output directory")
             else:
                 global EndOfFolder
-
+                global Many_Labeling
+                try:
+                    LabelingProgress_Text.destroy()
+                except: pass
+                try:
+                    LabelingProgress_Bar.destroy()
+                except: pass
                 LabelingProgress_Text = tk.Label(LabelingMainFrame, text="", justify="center")
                 LabelingProgress_Text.grid(row=9, column=0, columnspan=2)
                 gui.update_idletasks()
                 OutputFolder = LabelingOutputFile_Text.cget("text")
 
-                directory = segmentations_path
+                if Many_Labeling.get() == 1:
+                    Segmentation_Files = glob.glob(LabelingSongLocation.cget("text")+"/**/*wseg.csv", recursive=True)
+                    Num_Repeats = len(Segmentation_Files)
 
-                directory = directory.replace("\\", "/")
-
-                # dir_corrected = directory.split("/")[-1].replace("_seg_", "_label_")
-                # dir_corrected = dir_corrected.replace("_wseg.csv", "_labels.csv")
-                try:
-                    os.makedirs(OutputFolder+"/Labeling")
-                except: pass
-                output_file = OutputFolder + "/Labeling/" + Bird_ID + "_labels.csv"  # e.g. "C:/where_I_want_the_labels_to_be_saved/Bird_ID_labels.csv"
-
-                #############################################
-                # This is from labeling tutorial:
-                def make_spec(syll_wav, hop_length, win_length, n_fft, amin, ref_db, min_level_db):
-                    spectrogram = librosa.stft(syll_wav, hop_length=hop_length, win_length=win_length,
-                                               n_fft=n_fft)
-                    spectrogram_db = librosa.amplitude_to_db(np.abs(spectrogram), amin=amin, ref=ref_db)
-
-                    # normalize
-                    S_norm = np.clip((spectrogram_db - min_level_db) / -min_level_db, 0, 1)
-
-                    return S_norm
-
-                # hop_length = int(hop_length_entry_Labeling.get())
-                # win_length = int(win_length_entry_Labeling.get())
-                # n_fft = int(n_fft_entry_Labeling.get())
-                # ref_db = int(ref_db_entry_Labeling.get())
-                # amin = float(a_min_entry_Labeling.get())
-                # min_level_db = int(min_level_db_entry_Labeling.get())
-
-                K = 10
-                min_cluster_prop = 0.04
-                embedding_dim = 2
-
-                # load segmentations
-                predictions_reformat = pd.read_csv(directory)
-
-                segmentations = predictions_reformat
-                segmentations = segmentations.rename(
-                    columns={"onset": "onsets", "offset": "offsets", "cluster": "cluster", "file": "files"})
-
-                # sometimes this padding can create negative onset times, which will cause errors.
-                # correct this by setting any onsets <0 to 0.
-                segmentations.onsets = segmentations.where(segmentations.onsets > 0, 0).onsets
-
-                # Add syllable audio to dataframe
-                syllable_dfs = pd.DataFrame()
-                # for directory in segmentations.directory.unique():
-
-                LabelingProgress = IntVar()
-                LabelingProgress_Bar = ttk.Progressbar(LabelingMainFrame, orient="horizontal",
-                                                       mode="determinate", maximum=100,
-                                                       variable=LabelingProgress)
-                LabelingProgress_Bar.grid(row=10, column=0, columnspan=2)
-                gui.update_idletasks()
-
-                LabelingProgress_Text.config(text="Loading Song Files...")
-                LabelingProgress_Text.update()
-                for song_file in segmentations.files.unique():
-                    LabelingProgress_Bar.step(100 / len(segmentations.files.unique()))
-                    LabelingProgress_Bar.update()
-                    gui.update_idletasks()
-                    SongIndex = segmentations.index[segmentations['files'] == song_file].tolist()
-                    file_path = Song_Location.replace("\\", "/") + song_file
-
-                    song = dataloading.SongFile(file_path)
-                    song.bandpass_filter(int(bandpass_lower_cutoff_entry_Labeling.get()),
-                                         int(bandpass_upper_cutoff_entry_Labeling.get()))
-
-                    syllable_df = segmentations[segmentations['files'] == song_file]
-                    # this section is based on avn.signalprocessing.create_spectrogram_dataset.get_row_audio()
-                    syllable_df["audio"] = [song.data[int(st * song.sample_rate): int(et * song.sample_rate)]
-                                            for st, et in
-                                            zip(syllable_df.onsets.values, syllable_df.offsets.values)]
-                    syllable_dfs = pd.concat([syllable_dfs, syllable_df])
-
-                LabelingProgress.set(0)
-                # Normalize the audio  --- Ethan's comment: This won't work when there's an empty array for syllable_dfs_audio_values, so I'm just going to set those to '[0]'
-
-                syllable_dfs['audio'] = [librosa.util.normalize(i) for i in syllable_dfs.audio.values]
-                global hdbscan_df
-                hdbscan_df = syllable_dfs
-
-                # compute spectrogram for each syllable
-                syllables_spec = []
-
-                LabelingProgress_Text.config(text="Generating Labels...")
-                LabelingProgress_Text.update()
-                for syllable in syllable_dfs.audio.values:
-                    if len(syllable) > 0:
-                        LabelingProgress_Bar.step(100 / len(syllable_dfs.audio.values))
-                        LabelingProgress_Bar.update()
-                        syllable_spec = make_spec(syllable,
-                                                  hop_length=int(hop_length_entry_Labeling.get()),
-                                                  win_length=int(win_length_entry_Labeling.get()),
-                                                  n_fft=int(n_fft_entry_Labeling.get()),
-                                                  ref_db=int(ref_db_entry_Labeling.get()),
-                                                  amin=float(a_min_entry_Labeling.get()),
-                                                  min_level_db=int(min_level_db_entry_Labeling.get()))
-
-                        # if syllable_spec.shape[1] > int(max_spec_size_entry_Labeling.get()):
-                        #     print(
-                        #         "Long Syllable Corrections! Spectrogram Duration = " + str(
-                        #             syllable_spec.shape[1]))
-                        #     syllable_spec = syllable_spec[:, :int(max_spec_size_entry_Labeling.get())]
-
-                        syllables_spec.append(syllable_spec)
-
-                LabelingProgress_Text.config(text="Processing...")
-                LabelingProgress_Text.update()
-                LabelingProgress_Bar.config(mode="indeterminate")
-                LabelingProgress_Bar.start()
-                LabelingProgress_Bar.update()
-                time.sleep(0.1)
-                gui.update_idletasks()
-                time.sleep(0.1)
-
-                # normalize spectrograms
-                def norm(x):
-                    return (x - np.min(x)) / (np.max(x) - np.min(x))
-
-                syllables_spec_norm = [norm(i) for i in syllables_spec]
-
-                # Pad spectrograms for uniform dimensions
-                spec_lens = [np.shape(i)[1] for i in syllables_spec]
-                pad_length = np.max(spec_lens)
-
-                syllables_spec_padded = []
-
-                for spec in syllables_spec_norm:
-                    to_add = pad_length - np.shape(spec)[1]
-                    pad_left = np.floor(float(to_add) / 2).astype("int")
-                    pad_right = np.ceil(float(to_add) / 2).astype("int")
-                    spec_padded = np.pad(spec, [(0, 0), (pad_left, pad_right)], 'constant', constant_values=0)
-                    syllables_spec_padded.append(spec_padded)
-
-                # flatten the spectrograms into 1D
-                specs_flattened = [spec.flatten() for spec in syllables_spec_padded]
-                specs_flattened_array = np.array(specs_flattened)
-
-                # Embed
-                if random_state_entry_Labeling.get().upper() == "NONE":
-                    embedding = umap.UMAP(min_dist = float(min_dist_entry_Labeling.get()), n_components = 2, n_neighbors = K).fit_transform(specs_flattened_array)
+                    SongFile_dirs_temp = glob.glob(LabelingSongLocation.cget("text") + "/**/*.wav", recursive=True)
+                    # print(SongFile_dirs_temp)
+                    SongFile_dirs = []
+                    for file in SongFile_dirs_temp:
+                        tempname = ""
+                        file = file.replace("\\", "/")
+                        for i in file.split("/")[:-1]:
+                            tempname = tempname + i + "/"
+                        if tempname not in SongFile_dirs:
+                            SongFile_dirs.append(tempname)
+                    # print(SongFile_dirs)
                 else:
-                    embedding = umap.UMAP(random_state=int(random_state_entry_Labeling.get()),min_dist = float(min_dist_entry_Labeling.get()), n_components = 2, n_neighbors = K).fit_transform(specs_flattened_array)
-
-
-                # cluster
-                min_cluster_size = math.floor(embedding.shape[0] * float(min_cluster_prop_entry_Labeling.get()))
-                if random_state_entry_Labeling.get().upper() != "NONE":
-                    numpy.random.seed(int(random_state_entry_Labeling.get()))
-                clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, core_dist_n_jobs=1,
-                                            min_samples=int(min_samples_entry_Labeling.get())).fit(embedding)
-
-                hdbscan_df["labels"] = clusterer.labels_
-
-                hdbscan_df["X"] = embedding[:, 0]
-                hdbscan_df["Y"] = embedding[:, 1]
-                hdbscan_df["labels"] = hdbscan_df['labels'].astype("category")
-
-                LabelingProgress_Text.config(text="Saving...")
-                LabelingProgress_Text.update()
-
-                for column in hdbscan_df.columns:
-                    if "Unnamed" in column:
-                        hdbscan_df = hdbscan_df.drop(column, axis=1)
-
-                hdbscan_df.to_csv(output_file)
-                # os.rename(output_file+Bird_ID+"_labels.csv", output_file+Bird_ID+"_labels_"+output_file.split("/")[-1]+".csv")
-                # ------------------------------------
-
-                LabelingProgress_Text.config(text="Saving...")
-                LabelingProgress_Text.update()
-
-                # Create UMAP
-                plt.clf()
-                plt.figure(figsize=(5,5))
-                LabelingScatterplot = sns.scatterplot(data=hdbscan_df, x="X", y="Y", hue="labels", alpha=0.25,
-                                                      s=5)
-                plt.title(str(Bird_ID));
-                sns.move_legend(LabelingScatterplot, "upper right")
-                UMAP_Fig = LabelingScatterplot.get_figure()
-
-                # song_folder = song_folder_dir
-                #dir_corrected = dir_corrected.replace("_wseg.csv", "_labels.csv")
-                UMAP_Output = output_file.replace("_label_", "_UMAP_")
-                if "_labels.csv" in UMAP_Output:
-                    UMAP_Output = UMAP_Output.replace("_labels.csv", "_UMAP-Clusters.png")
-                else:
-                    UMAP_Output = UMAP_Output.replace(".csv", "_UMAP-Clusters.png")
-                UMAP_Fig.savefig(UMAP_Output)
-                plt.close(UMAP_Fig)
-
-                UMAP_Directories.append(UMAP_Output)
-
-                # Generate Metadata File for Advanced Settings #
-                global gui_version
-                global avn_version
-                LabelingSettingsMetadata = pd.DataFrame({
-                                                        "date":[str(date.today().strftime("%m/%d/%y"))],
-                                                        "avn version":[avn_version],
-                                                        "gui version":[gui_version],
-                                                        "Bird_ID":[str(Bird_ID)],
-                                                        "bandpass_lower_cutoff":[bandpass_lower_cutoff_entry_Labeling.get()], # Labeling Settings
-                                                        "bandpass_upper_cutoff":[bandpass_upper_cutoff_entry_Labeling.get()],
-                                                        "a_min":[a_min_entry_Labeling.get()],
-                                                        "ref_db":[ref_db_entry_Labeling.get()],
-                                                        "min_level_db":[min_level_db_entry_Labeling.get()],
-                                                        "n_fft":[n_fft_entry_Labeling.get()],
-                                                        "win_length":[win_length_entry_Labeling.get()],
-                                                        "hop_length":[hop_length_entry_Labeling.get()],
-                                                        'n_neighbors':[n_neighbors_entry_Labeling.get()], # UMAP Settings
-                                                        'n_components':[n_components_entry_Labeling.get()],
-                                                        'min_dist':[min_dist_entry_Labeling.get()],
-                                                        'spread':[spread_entry_Labeling.get()],
-                                                        'metric':[metric_variable.get()],
-                                                        'random_state':[random_state_entry_Labeling.get()],
-                                                        'min_cluster_prop':[min_cluster_prop_entry_Labeling.get()], # Clustering Settings
-                                                        'min_samples':[min_samples_entry_Labeling.get()]
-                                                        })
-                NewMetaCols = [('date','date'),("avn version","avn version"),("gui version","gui version"), ("Bird_ID","Bird_ID"),
-                                ('Labeling',"bandpass_lower_cutoff"),('Labeling',"bandpass_upper_cutoff"),
-                               ('Labeling',"a_min"),('Labeling',"ref_db"),
-                               ('Labeling',"min_level_db"),('Labeling',"n_fft"),
-                               ('Labeling',"win_length"),('Labeling',"hop_length"),
-                               ('UMAP',"n_neighbors"),('UMAP',"n_components"),
-                               ('UMAP',"min_dist"),('UMAP',"spread"),
-                               ('UMAP',"metric"),('UMAP',"random_state"),
-                               ('Clustering','min_cluster_prop'),('Clustering','min_samples')]
-
-                LabelingSettingsMetadata.columns = pd.MultiIndex.from_tuples(NewMetaCols)
-
-                Meta_Output = UMAP_Output.replace("_UMAP-Clusters.png", "_Labeling_Metadata.csv")
-                LabelingSettingsMetadata.to_csv(Meta_Output)
-
-                LabelingProgress_Bar.destroy()
-                LabelingProgress_Text.config(text="Labeling Complete!")
-                LabelingProgress_Text.update()
-                time.sleep(3)
-                LabelingProgress_Text.destroy()
-
-                # Make folder for storing labeling photos
-
-                def UMAP_Display():
-                    global UMAP_Directories
-
-                    UMAP_Img = PhotoImage(file=UMAP_Directories[0])
+                    Num_Repeats = 1
+                Repeat_index = 0
+                while Repeat_index<Num_Repeats:
                     try:
-                        UMAP_ImgLabel.destroy()
-                    except:
-                        pass
-                    def UMAP_Save():
-                        global LabelingFig
-                        global UMAP_Directories
-                        FileName_temp=UMAP_Directories[0].replace("\\","/").split("/")
-                        FileName=""
-                        for i in FileName_temp[:-1]:
-                            FileName = FileName+i+"/"
-                        file = asksaveasfile(initialfile=str(FileName) + LabelingBirdIDText.get()+'_UMAP.png',
-                                             defaultextension=".png",
-                                             filetypes=[("PNG Image", "*.png"), ("All Files", "*.*")])
+                        Repeat_index+=1
+                        if Many_Labeling.get() == 0:
+                            directory = segmentations_path
+                            directory = directory.replace("\\", "/")
+                            Song_Location = LabelingSongLocation.cget("text")
+                            if Song_Location[-1] != "/" or Song_Location[-1] != "\\":
+                                Song_Location = Song_Location + "/"
+                        else:
+                            directory = Segmentation_Files[Repeat_index-1]
+                            directory = directory.replace("\\", "/")
+
+                            # OutputFolder = ""
+                            # for i in directory.split("/")[:-2]:
+                            #     OutputFolder+=OutputFolder+i+"/"
+                            # Song_Location_temp = Segmentation_Files[Repeat_index].replace("\\","/").replace(LabelingSongLocation.cget("text")+"/","")
+                            # Song_Location = LabelingSongLocation.cget("text")+"/"+Song_Location_temp.split("/")[0]+"/"
+                            # print(Song_Location_temp.split("/"))
+                            Song_Location = SongFile_dirs[Repeat_index-1]
+                            OutputFolder = Song_Location
+                            # print(Song_Location)
+                        # dir_corrected = directory.split("/")[-1].replace("_seg_", "_label_")
+                        # dir_corrected = dir_corrected.replace("_wseg.csv", "_labels.csv")
                         try:
-                            shutil.rmtree(file)
-                        except:
-                            pass
-                        filename = str(file).split("\'")[1]
-                        LabelingFig.savefig(filename)
-                        plt.close(LabelingFig)
-                    UMAP_SaveButton = tk.Button(UMAPWindow, text="Save",command=lambda: UMAP_Save())
-                    UMAP_SaveButton.grid(row=0, column=0)
-                    UMAP_ImgLabel = tk.Label(UMAPWindow, image=UMAP_Img)
-                    UMAP_ImgLabel.grid(row=1, columnspan=3)
-                    UMAP_ImgLabel.update()
+                            os.makedirs(OutputFolder+"/Labeling")
+                        except: pass
+                        if Many_Labeling.get() == 0:
+                            output_file = OutputFolder + "/Labeling/" + Bird_ID + "_labels.csv"  # e.g. "C:/where_I_want_the_labels_to_be_saved/Bird_ID_labels.csv"
+                        else:
+                            output_file = OutputFolder + "/Labeling/" + Bird_ID + "_labels_"+str(Repeat_index)+".csv"  # e.g. "C:/where_I_want_the_labels_to_be_saved/Bird_ID_labels.csv"
+                        #############################################
+                        # This is from labeling tutorial:
+                        def make_spec(syll_wav, hop_length, win_length, n_fft, amin, ref_db, min_level_db):
+                            spectrogram = librosa.stft(syll_wav, hop_length=hop_length, win_length=win_length,
+                                                       n_fft=n_fft)
+                            spectrogram_db = librosa.amplitude_to_db(np.abs(spectrogram), amin=amin, ref=ref_db)
 
-                    UMAPWindow = tk.Toplevel(gui)
+                            # normalize
+                            S_norm = np.clip((spectrogram_db - min_level_db) / -min_level_db, 0, 1)
 
-                    UMAPWindow.mainloop()
+                            return S_norm
+
+                        # hop_length = int(hop_length_entry_Labeling.get())
+                        # win_length = int(win_length_entry_Labeling.get())
+                        # n_fft = int(n_fft_entry_Labeling.get())
+                        # ref_db = int(ref_db_entry_Labeling.get())
+                        # amin = float(a_min_entry_Labeling.get())
+                        # min_level_db = int(min_level_db_entry_Labeling.get())
+
+                        K = 10
+                        min_cluster_prop = 0.04
+                        embedding_dim = 2
+
+                        # load segmentations
+                        predictions_reformat = pd.read_csv(directory)
+                        segmentations = predictions_reformat
+                        segmentations = segmentations.rename(
+                            columns={"onset": "onsets", "offset": "offsets", "cluster": "cluster", "file": "files"})
+
+                        global MinSyllsLabel
+                        if int(MinSyllsLabel.get()) > 1:
+                            MinSylls_filelist = []
+                            for f in segmentations["files"]:
+                                if segmentations["files"].count(f) > int(MinSyllsLabel):
+                                    MinSylls_filelist.append(f)
+                            segmentations = segmentations[segmentations['files'].isin(MinSylls_filelist)]
+
+                        global Rand_Num
+                        if int(Rand_Num.get()) != 100:
+                            rand_percent = int(Rand_Num.get()) / 100
+                            len_rand = math.floor((len(segmentations['files'].unique()))*rand_percent)
+                            rand_list = []
+                            while len(rand_list) < len_rand:
+                                r = segmentations['files'].unique()[random.randint(0, len(segmentations['files'].unique())-1)]
+                                if r not in rand_list:
+                                    rand_list.append(r)
+                            segmentations_rand = pd.DataFrame()
+                            segmentations_rand = segmentations[segmentations['files'].isin(rand_list)]
+
+                            segmentations = segmentations_rand
+
+                        # sometimes this padding can create negative onset times, which will cause errors.
+                        # correct this by setting any onsets <0 to 0.
+                        segmentations.onsets = segmentations.where(segmentations.onsets > 0, 0).onsets
+
+                        # Add syllable audio to dataframe
+                        syllable_dfs = pd.DataFrame()
+                        # for directory in segmentations.directory.unique():
+
+                        LabelingProgress = IntVar()
+                        LabelingProgress_Bar = ttk.Progressbar(LabelingMainFrame, orient="horizontal",
+                                                               mode="determinate", maximum=100,
+                                                               variable=LabelingProgress)
+                        LabelingProgress_Bar.grid(row=10, column=0, columnspan=2)
+                        gui.update_idletasks()
+
+                        LabelingProgress_Text.config(text="Loading Song Files...")
+                        LabelingProgress_Text.update()
+                        file_counts = segmentations["files"].value_counts()
+                        segmentation_counts = int(file_counts.sum())
+
+                        for song_file in segmentations.files.unique():
+                            LabelingProgress_Bar.step(100 / len(segmentations.files.unique()))
+                            LabelingProgress_Bar.update()
+                            gui.update_idletasks()
+
+                            # If song file has fewer than 3 syllables, skip it -- file likely only contains calls -- this should improve memory performance
+                            if int(file_counts[song_file]) < 3:
+                                pass
+                            else:
+                                SongIndex = segmentations.index[segmentations['files'] == song_file].tolist()
+                                file_path = Song_Location.replace("\\", "/") + song_file
+
+                                song = dataloading.SongFile(file_path)
+                                song.bandpass_filter(int(bandpass_lower_cutoff_entry_Labeling.get()),
+                                                     int(bandpass_upper_cutoff_entry_Labeling.get()))
+
+                                syllable_df = segmentations[segmentations['files'] == song_file]
+                                # this section is based on avn.signalprocessing.create_spectrogram_dataset.get_row_audio()
+                                syllable_df["audio"] = [song.data[int(st * song.sample_rate): int(et * song.sample_rate)]
+                                                        for st, et in
+                                                        zip(syllable_df.onsets.values, syllable_df.offsets.values)]
+                                syllable_dfs = pd.concat([syllable_dfs, syllable_df])
+
+                        LabelingProgress.set(0)
+
+                        # Normalize the audio  --- Ethan's comment: This won't work when there's an empty array for syllable_dfs_audio_values, so I'm just going to set those to '[0]'
+
+                        syllable_dfs['audio'] = [librosa.util.normalize(i) for i in syllable_dfs.audio.values]
+
+                        # Iterate through syllable_dfs dataframe to randomly delete files so that total number of syllables is no greater than 20000
+                        # while len(syllable_dfs['files']) > 20000:
+                        #     random_num = np.random.randint(low=0,high=len(syllable_dfs['files']), size=1)[0]
+                        #     filename = syllable_dfs['files'][random_num]
+                        #     syllable_dfs = syllable_dfs[syllable_dfs['files'] != filename]
+
+                        global hdbscan_df
+                        hdbscan_df = syllable_dfs
+
+                        # compute spectrogram for each syllable
+                        syllables_spec = []
+
+                        LabelingProgress_Text.config(text="Generating Labels...")
+                        LabelingProgress_Text.update()
+
+                        for syllable in syllable_dfs.audio.values:
+                            if len(syllable) > 0:
+                                LabelingProgress_Bar.step(100 / len(syllable_dfs.audio.values))
+                                LabelingProgress_Bar.update()
+                                syllable_spec = make_spec(syllable,
+                                                          hop_length=int(hop_length_entry_Labeling.get()),
+                                                          win_length=int(win_length_entry_Labeling.get()),
+                                                          n_fft=int(n_fft_entry_Labeling.get()),
+                                                          ref_db=int(ref_db_entry_Labeling.get()),
+                                                          amin=float(a_min_entry_Labeling.get()),
+                                                          min_level_db=int(min_level_db_entry_Labeling.get()))
+
+                                # if syllable_spec.shape[1] > int(max_spec_size_entry_Labeling.get()):
+                                #     print(
+                                #         "Long Syllable Corrections! Spectrogram Duration = " + str(
+                                #             syllable_spec.shape[1]))
+                                #     syllable_spec = syllable_spec[:, :int(max_spec_size_entry_Labeling.get())]
+
+                                syllables_spec.append(syllable_spec)
+
+                        LabelingProgress_Text.config(text="Processing...")
+                        LabelingProgress_Text.update()
+                        LabelingProgress_Bar.config(mode="indeterminate")
+                        LabelingProgress_Bar.start()
+                        LabelingProgress_Bar.update()
+                        time.sleep(0.1)
+                        gui.update_idletasks()
+                        time.sleep(0.1)
+
+                        # normalize spectrograms
+                        def norm(x):
+                            return (x - np.min(x)) / (np.max(x) - np.min(x))
+
+                        syllables_spec_norm = [norm(i) for i in syllables_spec]
+
+                        # Pad spectrograms for uniform dimensions
+                        spec_lens = [np.shape(i)[1] for i in syllables_spec]
+                        pad_length = np.max(spec_lens)
+
+                        syllables_spec_padded = []
+
+                        for spec in syllables_spec_norm:
+                            to_add = pad_length - np.shape(spec)[1]
+                            pad_left = np.floor(float(to_add) / 2).astype("int")
+                            pad_right = np.ceil(float(to_add) / 2).astype("int")
+                            spec_padded = np.pad(spec, [(0, 0), (pad_left, pad_right)], 'constant', constant_values=0)
+                            syllables_spec_padded.append(spec_padded)
+
+                        # flatten the spectrograms into 1D
+                        specs_flattened = [spec.flatten() for spec in syllables_spec_padded]
+                        specs_flattened_array = np.array(specs_flattened)
+
+                        # Embed
+                        if random_state_entry_Labeling.get().upper() == "NONE":
+                            embedding = umap.UMAP(min_dist = float(min_dist_entry_Labeling.get()), n_components = 2, n_neighbors = K).fit_transform(specs_flattened_array)
+                        else:
+                            embedding = umap.UMAP(random_state=int(random_state_entry_Labeling.get()),min_dist = float(min_dist_entry_Labeling.get()), n_components = 2, n_neighbors = K).fit_transform(specs_flattened_array)
 
 
-                EndOfFolder = False
-                LabelingDisplay("Start")
-                UMAP_Display()
+                        # cluster
+                        min_cluster_size = math.floor(embedding.shape[0] * float(min_cluster_prop_entry_Labeling.get()))
+                        if random_state_entry_Labeling.get().upper() != "NONE":
+                            numpy.random.seed(int(random_state_entry_Labeling.get()))
+                        # print("min_cluster_size:"+str(min_cluster_size))
+                        # print("min_samples:"+str(min_samples_entry_Labeling.get()))
+                        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, core_dist_n_jobs=1,
+                                                    min_samples=int(min_samples_entry_Labeling.get())).fit(embedding)
 
+                        hdbscan_df["labels"] = clusterer.labels_
 
+                        hdbscan_df["X"] = embedding[:, 0]
+                        hdbscan_df["Y"] = embedding[:, 1]
+                        hdbscan_df["labels"] = hdbscan_df['labels'].astype("category")
+
+                        LabelingProgress_Text.config(text="Saving...")
+                        LabelingProgress_Text.update()
+
+                        for column in hdbscan_df.columns:
+                            if "Unnamed" in column:
+                                hdbscan_df = hdbscan_df.drop(column, axis=1)
+
+                        hdbscan_df.to_csv(output_file)
+                        # os.rename(output_file+Bird_ID+"_labels.csv", output_file+Bird_ID+"_labels_"+output_file.split("/")[-1]+".csv")
+                        # ------------------------------------
+
+                        LabelingProgress_Text.config(text="Saving...")
+                        LabelingProgress_Text.update()
+
+                        # Create UMAP
+                        plt.clf()
+                        plt.figure(figsize=(5,5))
+                        LabelingScatterplot = sns.scatterplot(data=hdbscan_df, x="X", y="Y", hue="labels", alpha=0.25,
+                                                              s=5)
+                        plt.title(str(Bird_ID));
+                        sns.move_legend(LabelingScatterplot, "upper right")
+                        UMAP_Fig = LabelingScatterplot.get_figure()
+
+                        # song_folder = song_folder_dir
+                        #dir_corrected = dir_corrected.replace("_wseg.csv", "_labels.csv")
+                        UMAP_Output = output_file.replace("_label_", "_UMAP_")
+                        if "_labels.csv" in UMAP_Output:
+                            UMAP_Output = UMAP_Output.replace("_labels.csv", "_UMAP-Clusters.png")
+                        else:
+                            UMAP_Output = UMAP_Output.replace(".csv", "_UMAP-Clusters.png")
+                        UMAP_Fig.savefig(UMAP_Output)
+                        plt.close(UMAP_Fig)
+                        plt.clf()
+                        plt.cla()
+                        UMAP_Directories.append(UMAP_Output)
+
+                        # Generate Metadata File for Advanced Settings #
+                        global gui_version
+                        global avn_version
+                        LabelingSettingsMetadata = pd.DataFrame({
+                                                                "date":[str(date.today().strftime("%m/%d/%y"))],
+                                                                "avn version":[avn_version],
+                                                                "gui version":[gui_version],
+                                                                "Bird_ID":[str(Bird_ID)],
+                                                                "percent_data_randomly_sampled":[Rand_Num.get()],
+                                                                "bandpass_lower_cutoff":[bandpass_lower_cutoff_entry_Labeling.get()], # Labeling Settings
+                                                                "bandpass_upper_cutoff":[bandpass_upper_cutoff_entry_Labeling.get()],
+                                                                "a_min":[a_min_entry_Labeling.get()],
+                                                                "ref_db":[ref_db_entry_Labeling.get()],
+                                                                "min_level_db":[min_level_db_entry_Labeling.get()],
+                                                                "n_fft":[n_fft_entry_Labeling.get()],
+                                                                "win_length":[win_length_entry_Labeling.get()],
+                                                                "hop_length":[hop_length_entry_Labeling.get()],
+                                                                'n_neighbors':[n_neighbors_entry_Labeling.get()], # UMAP Settings
+                                                                'n_components':[n_components_entry_Labeling.get()],
+                                                                'min_dist':[min_dist_entry_Labeling.get()],
+                                                                'spread':[spread_entry_Labeling.get()],
+                                                                'metric':[metric_variable.get()],
+                                                                'random_state':[random_state_entry_Labeling.get()],
+                                                                'min_cluster_prop':[min_cluster_prop_entry_Labeling.get()], # Clustering Settings
+                                                                'min_samples':[min_samples_entry_Labeling.get()]
+                                                                })
+                        NewMetaCols = [('date','date'),("avn version","avn version"),("gui version","gui version"), ("Bird_ID","Bird_ID"),
+                                       ("percent_data_randomly_sampled","percent_data_randomly_sampled"),('Labeling',"bandpass_lower_cutoff"),
+                                       ('Labeling',"bandpass_upper_cutoff"),
+                                       ('Labeling',"a_min"),('Labeling',"ref_db"),
+                                       ('Labeling',"min_level_db"),('Labeling',"n_fft"),
+                                       ('Labeling',"win_length"),('Labeling',"hop_length"),
+                                       ('UMAP',"n_neighbors"),('UMAP',"n_components"),
+                                       ('UMAP',"min_dist"),('UMAP',"spread"),
+                                       ('UMAP',"metric"),('UMAP',"random_state"),
+                                       ('Clustering','min_cluster_prop'),('Clustering','min_samples')]
+
+                        LabelingSettingsMetadata.columns = pd.MultiIndex.from_tuples(NewMetaCols)
+
+                        Meta_Output = UMAP_Output.replace("_UMAP-Clusters.png", "_Labeling_Metadata.csv")
+                        LabelingSettingsMetadata.to_csv(Meta_Output)
+
+                        LabelingProgress_Bar.destroy()
+                        LabelingProgress_Text.config(text="Labeling Complete!")
+                        LabelingProgress_Text.update()
+                        time.sleep(3)
+                        LabelingProgress_Text.config(text="")
+
+                        # Make folder for storing labeling photos
+
+                        def UMAP_Display():
+                            global UMAP_Directories
+
+                            UMAP_Img = PhotoImage(file=UMAP_Directories[0])
+                            try:
+                                UMAP_ImgLabel.destroy()
+                            except:
+                                pass
+                            def UMAP_Save():
+                                global LabelingFig
+                                global UMAP_Directories
+                                FileName_temp=UMAP_Directories[0].replace("\\","/").split("/")
+                                FileName=""
+                                for i in FileName_temp[:-1]:
+                                    FileName = FileName+i+"/"
+                                file = asksaveasfile(initialfile=str(FileName) + LabelingBirdIDText.get()+'_UMAP.png',
+                                                     defaultextension=".png",
+                                                     filetypes=[("PNG Image", "*.png"), ("All Files", "*.*")])
+                                try:
+                                    shutil.rmtree(file)
+                                except:
+                                    pass
+                                filename = str(file).split("\'")[1]
+                                LabelingFig.savefig(filename)
+                                plt.close(LabelingFig)
+                            UMAP_SaveButton = tk.Button(UMAPWindow, text="Save",command=lambda: UMAP_Save())
+                            UMAP_SaveButton.grid(row=0, column=0)
+                            UMAP_ImgLabel = tk.Label(UMAPWindow, image=UMAP_Img)
+                            UMAP_ImgLabel.grid(row=1, columnspan=3)
+                            UMAP_ImgLabel.update()
+
+                            UMAPWindow = tk.Toplevel(gui)
+
+                            UMAPWindow.mainloop()
+
+                        EndOfFolder = False
+                        if Many_Labeling.get() == 0:
+                            LabelingDisplay("Start")
+                            UMAP_Display()
+                    # print("done")
+                    except Exception:
+                        print("Unable to process " + directory+":")
+                        traceback.print_exc()
 
     else:
         LabelingErrorMessage.config(text="Invalid segmentation file")
         LabelingErrorMessage.update()
+        print("Invalid segmentation file")
 
 def LabelingDisplay(Direction):
     ## Generates a popup window with sample labeled spectrograms. Users can navigate between multiple spectrograms, with a hard-coded maximum
@@ -1705,6 +1808,9 @@ def Timing(RunAll=False):
     global gui_version
     global avn_version
 
+    plt.clf()
+    plt.cla()
+
     if RunAll == False:
         try:
             TimingLoadingMessage.destroy()
@@ -1767,6 +1873,8 @@ def Timing(RunAll=False):
             plt.xlabel('Syllable duration (s)');
             plt.savefig(TimingOutputFolder + Bird_ID + "_SyllableDurations.png")
             plt.close()
+            plt.clf()
+            plt.cla()
             syll_duration_entropy = segment_timing.calc_syll_duration_entropy()
             Temp_Array.append(syll_duration_entropy)
             gap_durations = segment_timing.get_gap_durations(max_gap=0.2)
@@ -1832,6 +1940,10 @@ def Timing(RunAll=False):
         syll_durations.to_csv(TimingOutputFolder + Bird_ID+"_syll_durations.csv")
         try:
             plt.close()
+        except:
+            pass
+        try:
+            plt.close(label_fig)
         except:
             pass
         sns.kdeplot(data=syll_durations, x='durations', bw_adjust=0.1)
@@ -1977,23 +2089,23 @@ def MoreInfo(Event):
                     "8": {"5": Dir_Info,
                            "6": Song_Info,
                            "7": Out_Info},
-                    "10": {"2":"Lower cutoff frequency in Hz for a hamming window " \
+                    "10": {"11":"Lower cutoff frequency in Hz for a hamming window " \
                                "bandpass filter applied to the audio data before generating " \
                                "spectrograms. Frequencies below this value will be filtered out"+'!bandpass_lower_cutoff',
-                        "4":"Upper cutoff frequency in Hz for a hamming window bandpass" \
+                        "12":"Upper cutoff frequency in Hz for a hamming window bandpass" \
                                " filter applied to the audio data before generating spectrograms. " \
                                "Frequencies above this value will be filtered out"+"!bandpass_upper_cutoff",
-                        "6":"Minimum amplitude threshold in the spectrogram. Values " \
+                        "13":"Minimum amplitude threshold in the spectrogram. Values " \
                                "lower than a_min will be set to a_min before conversion to decibels"+"!a_min",
-                        "8":"When making the spectrogram and converting it from amplitude " \
+                        "14":"When making the spectrogram and converting it from amplitude " \
                                "to db, the amplitude is scaled relative to this reference: " \
                                "20 * log10(S/ref_db) where S represents the spectrogram with amplitude values"+"!ref_db",
-                        "10":"When making the spectrogram, once the amplitude has been converted " \
+                        "15":"When making the spectrogram, once the amplitude has been converted " \
                                "to decibels, the spectrogram is normalized according to this value: " \
                                "(S - min_level_db)/-min_level_db where S represents the spectrogram " \
                                "in db. Any values of the resulting operation which are <0 are set to " \
                                "0 and any values that are >1 are set to 1"+"!min_level_db",
-                        "12":"When making the spectrogram, this is the length of the windowed " \
+                        "16":"When making the spectrogram, this is the length of the windowed " \
                                "signal after padding with zeros. The number of rows spectrogram is" \
                                " \"(1+n_fft/2)\". The default value,\"n_fft=512\" samples, " \
                                "corresponds to a physical duration of 93 milliseconds at a sample " \
@@ -2002,7 +2114,7 @@ def MoreInfo(Event):
                                "recommended value is 512, corresponding to 23 milliseconds at a sample" \
                                " rate of 22050 Hz. In any case, we recommend setting \"n_fft\" to a " \
                                "power of two for optimizing the speed of the fast Fourier transform (FFT) algorithm"+"!n_fft",
-                        "14":"When making the spectrogram, each frame of audio is windowed by a window " \
+                        "17":"When making the spectrogram, each frame of audio is windowed by a window " \
                                "of length \"win_length\" and then padded with zeros to match \"n_fft\"." \
                                " Padding is added on both the left- and the right-side of the window so" \
                                " that the window is centered within the frame. Smaller values improve " \
@@ -2012,40 +2124,40 @@ def MoreInfo(Event):
                                " spaced in frequency). This effect is known as the time-frequency " \
                                "localization trade-off and needs to be adjusted according to the " \
                                "properties of the input signal"+"!win_length",
-                        "16":"The number of audio samples between adjacent windows when creating " \
+                        "18":"The number of audio samples between adjacent windows when creating " \
                                "the spectrogram. Smaller values increase the number of columns in " \
                                "the spectrogram without affecting the frequency resolution"+"!hop_length",
-                        "18":"Maximum frequency in Hz used to estimate fundamental frequency " \
+                        "19":"Maximum frequency in Hz used to estimate fundamental frequency " \
                                "with the YIN algorithm"+"!max_spec_size"},
-                    "11": {"2":"The size of local neighborhood (in terms of number of neighboring sample points)" \
+                    "11": {"9":"The size of local neighborhood (in terms of number of neighboring sample points)" \
                                " used for manifold approximation. Larger values result in more global views " \
                                "of the manifold, while smaller values result in more local data being " \
                                "preserved. In general values should be in the range 2 to 100"+'!n_neighbors',
-                          "4":"The dimension of the space to embed into. This defaults to 2 to provide " \
+                          "10":"The dimension of the space to embed into. This defaults to 2 to provide " \
                                "easy visualization, but can reasonably be set to any integer value " \
                                "in the range 2 to 100"+"!n_components",
-                          "6":"The effective minimum distance between embedded points. " \
+                          "11":"The effective minimum distance between embedded points. " \
                                "Smaller values will result in a more clustered/clumped " \
                                "embedding where nearby points on the manifold are drawn " \
                                "closer together, while larger values will result on a more " \
                                "even dispersal of points. The value should be set relative to " \
                                "the \"spread\" value, which determines the scale at which " \
                                "embedded points will be spread out"+'!min_dist',
-                          "8":"The effective scale of embedded points. In combination with " \
+                          "12":"The effective scale of embedded points. In combination with " \
                                "\"min_dist\" this determines how clustered/clumped the embedded points are"+'!spread',
-                          "10":"The metric to use to compute distances in high dimensional space"+'!metric',
-                          "12":"If specified, random_state is the seed used by the random " \
+                          "13":"The metric to use to compute distances in high dimensional space"+'!metric',
+                          "14":"If specified, random_state is the seed used by the random " \
                                "number generator. Specifying a random state is the only way " \
                                "to ensure that you can reproduce an identical UMAP with the " \
                                "same data set multiple times"+'!random_state'},
-                    "12": {"2":'Minimum fraction of syllables that can constitute a cluster. '
+                    "12": {"5":'Minimum fraction of syllables that can constitute a cluster. '
                                           'For example, in a dataset of 1000 syllables, there need to be '
                                           'at least 40 instances of a particular syllable for that to be '
                                           'considered a cluster. Single linkage splits that contain fewer '
                                           'points than this will be considered points “falling out” of a '
                                           'cluster rather than a cluster splitting into two new clusters'
                                           'when performing HDBSCAN clustering'+"!min_cluster_prop",
-                          "4":'The number of samples in a neighbourhood for a point to be '
+                          "6":'The number of samples in a neighbourhood for a point to be '
                                           'considered a core point in HDBSCAN clustering. The larger the '
                                           'value of \"min_samples\" you provide, the more conservative '
                                           'the clustering – more points will be declared as noise, and '
@@ -2060,16 +2172,16 @@ def MoreInfo(Event):
                     "15": {"5":Dir_Info,
                            "6":Song_Info,
                            "7":Out_Info},
-                    "16": {"2":"Length of window over which to calculate each feature in samples"+'!win_length',
-                        "4":"Number of samples to advance between windows"+'!hop_length',
-                        "6":"Length of the transformed axis of the output. If n is smaller than " \
+                    "16": {"11":"Length of window over which to calculate each feature in samples"+'!win_length',
+                        "12":"Number of samples to advance between windows"+'!hop_length',
+                        "13":"Length of the transformed axis of the output. If n is smaller than " \
                                            "the length of the win_length, the input is cropped"+'!n_fft',
-                        "8":"Maximum allowable fundamental frequency of signal in Hz"+'!max_F0',
-                        "10":"Lower frequency cutoff in Hz. Only power at frequencies above " \
+                        "14":"Maximum allowable fundamental frequency of signal in Hz"+'!max_F0',
+                        "15":"Lower frequency cutoff in Hz. Only power at frequencies above " \
                                            "this will contribute to feature calculation"+'!min_frequency',
-                        "12":"Proportion of power spectrum frequency bins to consider"+'!freq_range',
-                        "14":"Baseline amplitude used to calculate amplitude in dB"+'!baseline_amp',
-                        "16":"Maximum frequency in Hz used to estimate fundamental frequency " \
+                        "16":"Proportion of power spectrum frequency bins to consider"+'!freq_range',
+                        "17":"Baseline amplitude used to calculate amplitude in dB"+'!baseline_amp',
+                        "18":"Maximum frequency in Hz used to estimate fundamental frequency " \
                                            "with the YIN algorithm"+'!fmax_yin'},
                     "18": {"5":Dir_Info,
                            "6":Song_Info,
@@ -2083,7 +2195,8 @@ def MoreInfo(Event):
                     "21": {"2":"Minimum duration in seconds for a gap between syllables "
                                  "to be considered syntactically relevant. This value should "
                                  "be selected such that gaps between syllables in a bout are "
-                                 "shorter than min_gap, but gaps between bouts are longer than min_gap"+"!min_gap"},
+                                 "shorter than min_gap, but gaps between bouts are longer than min_gap"+"!min_gap",
+                           "4":"Minimum number of syllables required for a bout to be included in a raster plot"+"!min_sylls"},
                     "22": {"5": Dir_Info,
                            "6": Song_Info,
                            "7": Out_Info},
@@ -2154,130 +2267,50 @@ def MoreInfo(Event):
 
     Module = str(Event.widget).split(".")[1].split("e")[-1]
     Setting = str(Event.widget).split("n")[-1]
+    BodyText_Dict = {"5":GlobalInputs_MoreInfo_Body,
+                     "7":Labeling_MoreInfoBody,
+                     "8":Labeling_MoreInfoBody2,
+                     "10":LabelingSpectrogramDialog,
+                     "11":LabelingUMAPDialog,
+                     "12":LabelingClusterDialog,
+                     "14":AcousticsCalcMethod,
+                     "15":MultiAcoustics_MoreInfoBody,
+                     "16":AcousticSettingsDialog,
+                     "18":Syntax_MoreInfoBody,
+                     "19":Syntax_MoreInfoBody2,
+                     "20":Syntax_MoreInfoBody3,
+                     "21":SyntaxDialog,
+                     "23":Timing_MoreInfoBody,
+                     "24":Timing_MoreInfoBody2,
+                     "25":Timing_SettingInfo_Body,
+                     "26":RunAll_Body,
+                     "28":Similarity_MoreInfoBody,
+                     "29":Similarity_MoreInfoBody2}
+    Title_Dict = {"5":GlobalInputs_MoreInfo_Title,
+                  "7":Labeling_MoreInfoTitle,
+                  "8":Labeling_MoreInfoTitle2,
+                  "10":LabelingSpectrogramTitle,
+                  "11":LabelingUMAPTitle,
+                  "12":LabelingClusterTitle,
+                  "14":AcousticsCalcTitle,
+                  "15":MultiAcoustics_MoreInfoTitle,
+                  "16":AcousticsSettingsDialogTitle,
+                  "18":Syntax_MoreInfoTitle,
+                  "19":Syntax_MoreInfoTitle2,
+                  "20":Syntax_MoreInfoTitle3,
+                  "21":SyntaxDialogTitle,
+                  "23":Timing_MoreInfoTitle,
+                  "24":Timing_MoreInfoTitle2,
+                  "25":Timing_SettingInfo_Title,
+                  "26":RunAll_Title,
+                  "28":Similarity_MoreInfoTitle,
+                  "29":Similarity_MoreInfoTitle2
+                  }
 
-
-    if Module == "5":
-        GlobalInputs_MoreInfo_Body.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        GlobalInputs_MoreInfo_Body.update()
-        GlobalInputs_MoreInfo_Title.config(text=SettingsDict[Module][Setting].split("!")[1])
-        GlobalInputs_MoreInfo_Title.update()
-    elif Module == "7":
-        Labeling_MoreInfoBody.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Labeling_MoreInfoBody.update()
-        Labeling_MoreInfoTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
-        Labeling_MoreInfoTitle.update()
-    elif Module == "8":
-        Labeling_MoreInfoBody2.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Labeling_MoreInfoBody2.update()
-        Labeling_MoreInfoTitle2.config(text=SettingsDict[Module][Setting].split("!")[1])
-        Labeling_MoreInfoTitle2.update()
-    ### Labeling Spectrogram Generation Parameters ###
-    elif Module == "10":
-        LabelingSpectrogramDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        LabelingSpectrogramDialog.update()
-        LabelingSpectrogramTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
-        LabelingSpectrogramTitle.update()
-
-    ### UMAP Parameters ###
-    elif Module == "11":
-        LabelingUMAPDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        LabelingUMAPDialog.update()
-        LabelingUMAPTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
-        LabelingUMAPTitle.update()
-
-    ### Clustering Parameters ###
-    elif Module == "12":
-        LabelingClusterDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        LabelingClusterDialog.update()
-        LabelingClusterTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
-        LabelingClusterTitle.update()
-
-    ### Acoustic Features Calculation Method ###
-    elif Module == "14":
-        AcousticsCalcMethod.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        AcousticsCalcMethod.update()
-        AcousticsCalcTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
-        AcousticsCalcTitle.update()
-
-    # MultiAcoustics
-    elif Module == "15":
-        MultiAcoustics_MoreInfoBody.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        MultiAcoustics_MoreInfoBody.update()
-        MultiAcoustics_MoreInfoTitle.config(text=SettingsDict[Module][Setting].split("!")[1], wraplength=Text_wraplength)
-        MultiAcoustics_MoreInfoTitle.update()
-
-    ### Acoustic Features ###
-    elif Module == "16":
-        AcousticSettingsDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        AcousticSettingsDialog.update()
-        AcousticsSettingsDialogTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
-        AcousticsSettingsDialogTitle.update()
-
-    # Syntax
-    elif Module == "18":
-        Syntax_MoreInfoBody.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Syntax_MoreInfoBody.update()
-        Syntax_MoreInfoTitle.config(text=SettingsDict[Module][Setting].split("!")[1],
-                                            wraplength=Text_wraplength)
-        Syntax_MoreInfoTitle.update()
-
-    elif Module == "19":
-        Syntax_MoreInfoBody2.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Syntax_MoreInfoBody2.update()
-        Syntax_MoreInfoTitle2.config(text=SettingsDict[Module][Setting].split("!")[1])
-        Syntax_MoreInfoTitle2.update()
-
-    elif Module == "20":
-        Syntax_MoreInfoBody3.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Syntax_MoreInfoBody3.update
-        Syntax_MoreInfoTitle3.config(text=SettingsDict[Module][Setting].split("!")[1])
-        Syntax_MoreInfoTitle3.update()
-
-    ### Syntax ###
-    elif Module == "21":
-        SyntaxDialog.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        SyntaxDialog.update()
-        SyntaxDialogTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
-        SyntaxDialogTitle.update()
-
-    # Timing
-    elif Module == "23":
-        Timing_MoreInfoBody.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Timing_MoreInfoBody.update()
-        Timing_MoreInfoTitle.config(text=SettingsDict[Module][Setting].split("!")[1],
-                                    wraplength=Text_wraplength)
-        Timing_MoreInfoTitle.update()
-
-    elif Module == "24":
-        Timing_MoreInfoBody2.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Timing_MoreInfoBody2.update()
-        Timing_MoreInfoTitle2.config(text=SettingsDict[Module][Setting].split("!")[1],
-                                    wraplength=Text_wraplength)
-        Timing_MoreInfoTitle2.update()
-
-    elif Module == "25":
-        Timing_SettingInfo_Body.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Timing_SettingInfo_Body.update()
-        Timing_SettingInfo_Title.config(text=SettingsDict[Module][Setting].split("!")[1],
-                                     wraplength=Text_wraplength)
-        Timing_SettingInfo_Title.update()
-
-    elif Module == "26":
-        RunAll_Body.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        RunAll_Body.update()
-        RunAll_Title.config(text=SettingsDict[Module][Setting].split("!")[1])
-        RunAll_Title.update()
-    ### Similarity Scoring ###
-    elif Module == "28":
-        Similarity_MoreInfoBody.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Similarity_MoreInfoBody.update()
-        Similarity_MoreInfoTitle.config(text=SettingsDict[Module][Setting].split("!")[1])
-        Similarity_MoreInfoTitle.update()
-    elif Module == "29":
-        Similarity_MoreInfoBody2.config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
-        Similarity_MoreInfoBody2.update()
-        Similarity_MoreInfoTitle2.config(text=SettingsDict[Module][Setting].split("!")[1])
-        Similarity_MoreInfoTitle2.update()
+    BodyText_Dict[Module].config(text=SettingsDict[Module][Setting].split("!")[0], wraplength=Text_wraplength)
+    BodyText_Dict[Module].update()
+    Title_Dict[Module].config(text=SettingsDict[Module][Setting].split("!")[1])
+    Title_Dict[Module].update()
 
 def LessInfo(Event):
     labels_list = [Similarity_MoreInfoBody,Similarity_MoreInfoTitle,
@@ -2400,9 +2433,29 @@ def SimilarityScoring_Prep():
         os.makedirs(out_dir)
     except:
         pass
+    # Create segmentation file that excludes calls or files with very few syllables -- this should reduce the number of segmentations processed
+    # and should create less strain on memory
 
-    similarity.prep_spects(Bird_ID=Bird_ID, segmentations=segmentations, song_folder_path=song_folder_path,
+    SimilaritySegmentations_df = pd.DataFrame()
+
+    filesList = segmentations.files.unique()
+
+    try: # Will only run if a labeling file is input. Otherwise, this is skipped and a segmentation file is used, saving all syllables
+        # If song file has fewer than 3 syllables, skip it -- file likely only contains calls -- this should improve memory performance
+        for file in filesList:
+            syllable_df = segmentations[segmentations['files'] == file]
+            if len(syllable_df['labels'].value_counts().index.tolist()) > 2:
+                SimilaritySegmentations_df = pd.concat([SimilaritySegmentations_df,syllable_df])
+    except: # input file is segmentations
+        for file in segmentations.files.unique():
+            syllable_df = segmentations[segmentations['files'] == file]
+            if segmentations['files'].value_counts()[file] > 2:
+                SimilaritySegmentations_df = pd.concat([SimilaritySegmentations_df,syllable_df])
+
+        # SimilaritySegmentations_df = segmentations
+    similarity.prep_spects(Bird_ID=Bird_ID, segmentations=SimilaritySegmentations_df, song_folder_path=song_folder_path,
                            out_dir=out_dir)
+    SimilaritySegmentations_df.to_csv(out_dir+"SyllablesKept.csv")
     SimilarityLoadingMessage.config(text="Syllable Spectrograms Saved!")
     SimilarityLoadingBar.destroy()
     time.sleep(3)
@@ -2432,30 +2485,101 @@ def SimilarityScoring_Output():
         os.makedirs(OutputFolder)
     except: pass
     model = similarity.load_model()
+
+######################################################
+    # SyllableSeg_df_Bird1 = pd.read_csv(SimilaritySegTable2.cget("text"))
+
+    # Create temporary folder that houses randomly sampled syllable data
+    SyllableDir_temp = spectrograms_dir_2 + "/temp1/"
+    try:
+        os.makedirs(SyllableDir_temp)
+    except: pass
+    FileList_2 = glob.glob(spectrograms_dir_2+"/*.npy")
+    FileList_len = len(FileList_2)
+    # Move 2000 files to new folder for embedding
+    Used_Index = []
+    global Syll_1
+    for i in range(min(int(Syll_1.get()), int(FileList_len))):
+        random_num = np.random.randint(low=0,high=FileList_len, size=1)[0]
+        if random_num not in Used_Index:
+            Used_Index.append(random_num)
+            Filename = FileList_2[random_num]
+            Filename_temp = Filename.replace("\\","/").split("/")
+            Filename_new = ""
+            for f in Filename_temp:
+                if ".npy" not in f:
+                    Filename_new = Filename_new+f+"/"
+                else:
+                    Filename_new = Filename_new+"temp1/"+f
+            os.rename(Filename, Filename_new)
+            FileList_2 = glob.glob(spectrograms_dir_2 + "/*.npy")
+            FileList_len = len(FileList_2)
+    spectrograms_dir_2 = SyllableDir_temp
+#######################################################
     embeddings_2 = similarity.calc_embeddings(Bird_ID=Bird_ID_2,
                                             spectrograms_dir=spectrograms_dir_2,
                                             model=model)
 
+    for file in glob.glob(SyllableDir_temp+"*.npy"):
+        newdir = SimilarityInput2.cget("text")+"/"+file.replace("\\","/").split("/")[-1]
+        os.rename(file, newdir)
+
     pca = PCA(n_components=2)
-    embeddings_PCs_2 = pca.fit_transform(embeddings_2)
-    plt.scatter(embeddings_PCs_2[:, 0], embeddings_PCs_2[:, 1], s=5,label = Bird_ID_2)
-    plt.legend()
-    plt.savefig(OutputFolder + Bird_ID_2+".png")
-    plt.close()
+    # embeddings_PCs_2 = pca.fit_transform(embeddings_2)
+    # plt.scatter(embeddings_PCs_2[:, 0], embeddings_PCs_2[:, 1], s=5,label = Bird_ID_2)
+    # plt.legend()
+    # plt.savefig(OutputFolder + Bird_ID_2+".png")
+    # plt.close()
     SimilarityProgressBar.step()
     SimilarityProgressBar.update()
-    ###
 
     global SimilarityInput3
     spectrograms_dir_3 = SimilarityInput3.cget("text")
+
+    ######################################################
+    # SyllableSeg_df_Bird2 = pd.read_csv(SimilaritySegTable3.cget("text"))
+
+    # Create temporary folder that houses randomly sampled syllable data
+    SyllableDir_temp = spectrograms_dir_3 + "/temp2/"
+    try:
+        os.makedirs(SyllableDir_temp)
+    except: pass
+    FileList_3 = glob.glob(spectrograms_dir_3 + "/*.npy")
+    FileList_len_2 = len(FileList_3)
+    # Move 2000 files to new folder for embedding
+    global Syll_2
+    for i in range(min(int(Syll_2.get()), int(FileList_len_2))):
+        random_num = np.random.randint(low=0, high=FileList_len_2, size=1)[0]
+        Filename_2 = FileList_3[random_num]
+        Filename_temp_2 = Filename_2.replace("\\", "/").split("/")
+        Filename_new_2 = ""
+        for f in Filename_temp_2:
+            if ".npy" not in f:
+                Filename_new_2 = Filename_new_2 + f + "/"
+            else:
+                Filename_new_2 = Filename_new_2 + "temp2/" + f
+        # print(Filename_2)
+        # print("---")
+        # print(Filename_new_2)
+        os.rename(Filename_2, Filename_new_2)
+        FileList_3 = glob.glob(spectrograms_dir_3 + "/*.npy")
+        FileList_len_2 = len(FileList_3)
+    spectrograms_dir_3 = SyllableDir_temp
+    #######################################################
+
     embeddings_3 = similarity.calc_embeddings(Bird_ID=Bird_ID_3,
                                             spectrograms_dir=spectrograms_dir_3,
                                             model=model)
-    embeddings_PCs_3 = pca.fit_transform(embeddings_3)
-    plt.scatter(embeddings_PCs_3[:, 0], embeddings_PCs_3[:, 1], s=5,label = Bird_ID_3)
-    plt.legend()
-    plt.savefig(OutputFolder+Bird_ID_3+".png")
-    plt.close()
+
+    for file in glob.glob(SyllableDir_temp+"*.npy"):
+        newdir = SimilarityInput3.cget("text")+"/"+file.replace("\\","/").split("/")[-1]
+        os.rename(file, newdir)
+
+    # embeddings_PCs_3 = pca.fit_transform(embeddings_3)
+    # plt.scatter(embeddings_PCs_3[:, 0], embeddings_PCs_3[:, 1], s=5,label = Bird_ID_3)
+    # plt.legend()
+    # plt.savefig(OutputFolder+Bird_ID_3+".png")
+    # plt.close()
     SimilarityProgressBar.step()
     SimilarityProgressBar.update()
     global SaveEmbedding
@@ -2472,6 +2596,17 @@ def SimilarityScoring_Output():
     embedding_PCs_2 = pca.transform(embeddings_2)
     embedding_PCs_3 = pca.transform(embeddings_3)
     plt.close()
+    # Save birds individually then combined #
+    plt.scatter(embedding_PCs_2[:, 0], embedding_PCs_2[:, 1], s=5, label=str(Bird_ID_2), alpha=0.5)
+    plt.legend()
+    plt.savefig(OutputFolder + Bird_ID_2 + ".png")
+    plt.close()
+
+    plt.scatter(embedding_PCs_3[:, 0], embedding_PCs_3[:, 1], s=5, label=str(Bird_ID_3), alpha=0.5)
+    plt.legend()
+    plt.savefig(OutputFolder + Bird_ID_3 + ".png")
+    plt.close()
+
     plt.scatter(embedding_PCs_2[:, 0], embedding_PCs_2[:, 1], s=5, label=str(Bird_ID_2), alpha=0.5)
     plt.scatter(embedding_PCs_3[:, 0], embedding_PCs_3[:, 1], s=5, label=str(Bird_ID_3), alpha=0.5)
     plt.legend()
@@ -2612,15 +2747,16 @@ def RunAllModules():
     RunAllMessage.config(text="Complete!")
     RunAllMessage.update()
 
+
 ### Initialize gui ###
 gui = tk.Tk()
-gui.title("AVN GUI")
+gui.title("AVN GUI 0.2.0")
 gui.resizable(False, False)
 
-ParentStyle = ttk.Style()
-ParentStyle.configure('Parent.TNotebook.Tab', font=('Arial', '10', 'bold'))
-
+# ParentStyle = ttk.Style()
+# ParentStyle.configure('Parent.TNotebook.Tab', font=('Arial', '10', 'bold'))
 # notebook = ttk.Notebook(gui, style='Parent.TNotebook.Tab')
+
 notebook = ttk.Notebook(gui)
 notebook.grid()
 
@@ -2690,7 +2826,7 @@ AVN_Documentation.bind("<Button-1>", lambda e: wb.open_new_tab("https://avn.read
 GithubRepo = tk.Label(LinksTab, text="AVN Github Repo", fg="blue", cursor="hand2")
 GithubRepo.grid(row=2)
 GithubRepo.bind("<Button-1>", lambda e: wb.open_new_tab("https://github.com/theresekoch/avn/tree/main"))
-ThereseEmail = tk.Label(LinksTab, text="Email me", fg="blue", cursor="hand2")
+ThereseEmail = tk.Label(LinksTab, text="Email Me", fg="blue", cursor="hand2")
 ThereseEmail.grid(row=3)
 ThereseEmail.bind("<Button-1>", lambda e: wb.open_new_tab("mailto:therese.koch1@gmail.com"))
 PreprintLink = tk.Label(LinksTab, text="AVN Preprint", fg="blue", cursor="hand2")
@@ -2724,7 +2860,6 @@ GlobalInputs_MoreInfo_Title = tk.Label(GlobalInputs, text="", font=("Arial", 15,
 GlobalInputs_MoreInfo_Title.grid(row=1, column=1)
 GlobalInputs_MoreInfo_Body = tk.Label(GlobalInputs, text="")
 GlobalInputs_MoreInfo_Body.grid(row=2, column=1, rowspan=5, sticky="n")
-
 
 def ApplyGlobalInputs():
     LabelingFile = GlobalInputs_Input.cget("text")
@@ -2778,9 +2913,11 @@ def ApplyGlobalInputs():
     SyntaxAlignment = tk.OptionMenu(Syntax_RasterTab, SyntaxAlignmentVar, *AlignmentChoices)
     SyntaxAlignment.grid(row=4, column=1, sticky="w", padx=Padding_Width)
 
-
+    GlobalInputsMessage = tk.Label(GlobalInputs, text="Inputs Applied!")
+    GlobalInputsMessage.grid(row=11, column=0, columnspan=2)
+    time.sleep(3)
+    GlobalInputsMessage.destroy()
 GlobalInputs_Submit_Button = tk.Button(GlobalInputs, text="Apply Inputs", command=lambda:ApplyGlobalInputs()).grid(row=10, column=0, columnspan=2)
-
 
 ### Labeling Window Initialization ###
 # Labeling Features
@@ -2812,7 +2949,7 @@ LabelingSettingsNotebook.add(LabelingClusterSettings, text="Clustering Settings"
 Labeling_Padding2 = tk.Label(LabelingMainFrame, text="", font=("Arial", 20)).grid(row=8)
 
 LabelingButton = tk.Button(LabelingMainFrame, text="Run", command = lambda : Labeling())
-LabelingButton.grid(row=7, column=0, columnspan=2)
+LabelingButton.grid(row=8, column=0, columnspan=2)
 
 global LabelingBirdIDText
 LabelingBirdIDText = tk.Entry(LabelingMainFrame, font=("Arial", 15), justify="center", fg="grey", width=BirdID_Width)
@@ -2839,6 +2976,22 @@ LabelingSongLocation_Button.grid(row=1, column=0)
 global LabelingOutputFile_Text
 LabelingOutputFile_Text = tk.Label(LabelingMainFrame, text=Dir_Width*" ", bg="light grey", anchor="w")
 LabelingOutputFile_Text.grid(row=3, column=1, columnspan=2, sticky="w", padx=Padding_Width)
+
+global Many_Labeling
+Many_Labeling = IntVar()
+Many_Labeling.set(0)
+Many_Labeling_Checkbox = tk.Checkbutton(LabelingMainFrame, text="Label Many Days", variable=Many_Labeling, onvalue=1, offvalue=0).grid(row=7, column=0, columnspan=2)
+
+Labeling_RandSampling = tk.Label(LabelingSettingsFrame, text="Percent of data to randomly sample:").grid(row=16, column=0)
+global Rand_Num
+Rand_Num = StringVar()
+Rand_Num.set("100")
+Labeling_Rand_Num = ttk.Spinbox(LabelingSettingsFrame,from_=5, to=100, increment=5, textvariable=Rand_Num,width=15).grid(row=16,column=1, padx=Padding_Width)
+
+MinSyllsLabel_Text = tk.Label(LabelingSettingsFrame, text="Minimum length of bout to be labeled:").grid(row=17,column=0)
+global MinSyllsLabel
+MinSyllsLabel = StringVar()
+Labeling_Min_Sylls = ttk.Spinbox(LabelingSettingsFrame, from_=1, to=10, increment=1, textvariable=MinSyllsLabel, width=10).grid(row=17, column=1, padx=Padding_Width)
 
 def LabelingOutputDirectory():
     global LabelingOutputFile_Text
@@ -2938,6 +3091,11 @@ LabelingUMAPDialog.grid(row=1, column=4, rowspan=6)
 LabelingUMAPTitle = tk.Label(LabelingUMAPSettings, text="", justify="center", font=("Arial", 20, 'bold'), height=Dialog_TitleHeight, width=Dialog_TitleWidth)
 LabelingUMAPTitle.grid(row=0, column=4)
 
+def GenerateLabelingSettings():
+    LabelingSettings = []
+    LabelingUMAPSettings = []
+    LabelingClusterSettings = []
+
 ErrorFont = ("Arial", 7)
 
 bandpass_lower_cutoff_Labeling_Error = tk.Label(LabelingSettingsFrame, text="", font=ErrorFont)
@@ -2948,10 +3106,7 @@ bandpass_lower_cutoff_entry_Labeling.insert(0, "500")
 bandpass_lower_cutoff_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(bandpass_lower_cutoff_entry_Labeling, "bandpass_lower_cutoff_entry_Labeling",bandpass_lower_cutoff_Labeling_Error))
 bandpass_lower_cutoff_entry_Labeling.grid(row=0, column=1)
 bandpass_lower_cutoff_reset_Labeling = tk.Button(LabelingSettingsFrame, text="Reset",command=lambda: ResetLabelingSetting(bandpass_lower_cutoff_entry_Labeling, LabelSpecList,bandpass_lower_cutoff_Labeling_Error)).grid(row=0, column=2)
-bandpass_lower_cutoff_moreinfo_Labeling = tk.Button(LabelingSettingsFrame, text='?', state="disabled", fg="black")
-bandpass_lower_cutoff_moreinfo_Labeling.grid(row=0, column=3, sticky=W)
-bandpass_lower_cutoff_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-bandpass_lower_cutoff_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 bandpass_upper_cutoff_Labeling_Error = tk.Label(LabelingSettingsFrame, text="", font=ErrorFont)
 bandpass_upper_cutoff_Labeling_Error.grid(row=3, column=1)
@@ -2961,10 +3116,7 @@ bandpass_upper_cutoff_entry_Labeling.insert(0, "15000")
 bandpass_upper_cutoff_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(bandpass_upper_cutoff_entry_Labeling,"bandpass_upper_cutoff_entry_Labeling",bandpass_upper_cutoff_Labeling_Error))
 bandpass_upper_cutoff_entry_Labeling.grid(row=2, column=1)
 bandpass_upper_cutoff_reset_Labeling = tk.Button(LabelingSettingsFrame, text="Reset",command=lambda: ResetLabelingSetting(bandpass_upper_cutoff_entry_Labeling, LabelSpecList,bandpass_upper_cutoff_Labeling_Error)).grid(row=2, column=2)
-bandpass_upper_cutoff_moreinfo_Labeling = tk.Button(LabelingSettingsFrame, text='?', state="disabled", fg="black")
-bandpass_upper_cutoff_moreinfo_Labeling.grid(row=2, column=3, sticky=W)
-bandpass_upper_cutoff_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-bandpass_upper_cutoff_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 a_min_Labeling_Error = tk.Label(LabelingSettingsFrame, text="", font=ErrorFont)
 a_min_Labeling_Error.grid(row=5, column=1)
@@ -2974,10 +3126,7 @@ a_min_entry_Labeling.insert(0, "0.00001")
 a_min_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(a_min_entry_Labeling,"a_min_entry_Labeling",a_min_Labeling_Error))
 a_min_entry_Labeling.grid(row=4, column=1)
 a_min_reset_Labeling = tk.Button(LabelingSettingsFrame, text="Reset",command=lambda: ResetLabelingSetting(a_min_entry_Labeling, LabelSpecList,a_min_Labeling_Error)).grid(row=4, column=2)
-a_min_moreinfo_Labeling = tk.Button(LabelingSettingsFrame, text='?', state="disabled", fg="black")
-a_min_moreinfo_Labeling.grid(row=4, column=3, sticky=W)
-a_min_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-a_min_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 ref_db_Labeling_Error = tk.Label(LabelingSettingsFrame, text="", font=ErrorFont)
 ref_db_Labeling_Error.grid(row=7, column=1)
@@ -2987,10 +3136,7 @@ ref_db_entry_Labeling.insert(0, "20")
 ref_db_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(ref_db_entry_Labeling,"ref_db_entry_Labeling",ref_db_Labeling_Error))
 ref_db_entry_Labeling.grid(row=6, column=1)
 ref_db_reset_Labeling = tk.Button(LabelingSettingsFrame, text="Reset",command=lambda: ResetLabelingSetting(ref_db_entry_Labeling, LabelSpecList,ref_db_Labeling_Error)).grid(row=6, column=2)
-ref_db_moreinfo_Labeling = tk.Button(LabelingSettingsFrame, text='?', state="disabled", fg="black")
-ref_db_moreinfo_Labeling.grid(row=6, column=3, sticky=W)
-ref_db_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-ref_db_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 min_level_db_Labeling_Error = tk.Label(LabelingSettingsFrame, text="", font=ErrorFont)
 min_level_db_Labeling_Error.grid(row=9, column=1)
@@ -3000,10 +3146,7 @@ min_level_db_entry_Labeling.insert(0, "-28")
 min_level_db_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(min_level_db_entry_Labeling,'min_level_db_entry_Labeling',min_level_db_Labeling_Error))
 min_level_db_entry_Labeling.grid(row=8, column=1)
 min_level_db_reset_Labeling = tk.Button(LabelingSettingsFrame, text="Reset",command=lambda: ResetLabelingSetting(min_level_db_entry_Labeling, LabelSpecList,min_level_db_Labeling_Error)).grid(row=8, column=2)
-min_level_db_moreinfo_Labeling = tk.Button(LabelingSettingsFrame, text='?', state="disabled", fg="black")
-min_level_db_moreinfo_Labeling.grid(row=8, column=3, sticky=W)
-min_level_db_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-min_level_db_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 n_fft_Labeling_Error = tk.Label(LabelingSettingsFrame, text="", font=ErrorFont)
 n_fft_Labeling_Error.grid(row=11, column=1)
@@ -3013,10 +3156,7 @@ n_fft_entry_Labeling.insert(0, "512")
 n_fft_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(n_fft_entry_Labeling,'n_fft_entry_Labeling',n_fft_Labeling_Error))
 n_fft_entry_Labeling.grid(row=10, column=1)
 n_fft_reset_Labeling = tk.Button(LabelingSettingsFrame, text="Reset",command=lambda: ResetLabelingSetting(n_fft_entry_Labeling, LabelSpecList,n_fft_Labeling_Error)).grid(row=10, column=2)
-n_fft_moreinfo_Labeling = tk.Button(LabelingSettingsFrame, text='?', state="disabled", fg="black")
-n_fft_moreinfo_Labeling.grid(row=10, column=3, sticky=W)
-n_fft_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-n_fft_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 win_length_Labeling_Error = tk.Label(LabelingSettingsFrame, text="", font=ErrorFont)
 win_length_Labeling_Error.grid(row=13, column=1)
@@ -3026,10 +3166,7 @@ win_length_entry_Labeling.insert(0, "512")
 win_length_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(win_length_entry_Labeling,'win_length_entry_Labeling',win_length_Labeling_Error))
 win_length_entry_Labeling.grid(row=12, column=1)
 win_length_reset_Labeling = tk.Button(LabelingSettingsFrame, text="Reset",command=lambda: ResetLabelingSetting(win_length_entry_Labeling, LabelSpecList,win_length_Labeling_Error)).grid(row=12, column=2)
-win_length_moreinfo_Labeling = tk.Button(LabelingSettingsFrame, text='?', state="disabled", fg="black")
-win_length_moreinfo_Labeling.grid(row=12, column=3, sticky=W)
-win_length_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-win_length_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 hop_length_Labeling_Error = tk.Label(LabelingSettingsFrame, text="", font=ErrorFont)
 hop_length_Labeling_Error.grid(row=15, column=1)
@@ -3039,10 +3176,6 @@ hop_length_entry_Labeling.insert(0, "128")
 hop_length_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(hop_length_entry_Labeling,'hop_length_entry_Labeling',hop_length_Labeling_Error))
 hop_length_entry_Labeling.grid(row=14, column=1)
 hop_length_reset_Labeling = tk.Button(LabelingSettingsFrame, text="Reset",command=lambda: ResetLabelingSetting(hop_length_entry_Labeling, LabelSpecList,hop_length_Labeling_Error)).grid(row=14, column=2)
-hop_length_moreinfo_Labeling = tk.Button(LabelingSettingsFrame, text='?', state="disabled", fg="black")
-hop_length_moreinfo_Labeling.grid(row=14, column=3, sticky=W)
-hop_length_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-hop_length_moreinfo_Labeling.bind("<Leave>", LessInfo)
 
 LabelSpecList = [bandpass_lower_cutoff_entry_Labeling,bandpass_upper_cutoff_entry_Labeling,a_min_entry_Labeling,ref_db_entry_Labeling,
                  min_level_db_entry_Labeling,n_fft_entry_Labeling,win_length_entry_Labeling,hop_length_entry_Labeling]
@@ -3095,10 +3228,7 @@ n_neighbors_entry_Labeling.insert(0, "10")
 n_neighbors_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(n_neighbors_entry_Labeling,'n_neighbors_entry_Labeling',n_neighbors_Labeling_Error))
 n_neighbors_entry_Labeling.grid(row=0, column=1)
 n_neighbors_reset_Labeling = tk.Button(LabelingUMAPSettings, text="Reset",command=lambda: ResetLabelingUMAPSetting(n_neighbors_entry_Labeling, LabelingUMAPVars,n_neighbors_Labeling_Error)).grid(row=0, column=2)
-n_neighbors_moreinfo_Labeling = tk.Button(LabelingUMAPSettings, text='?', state="disabled", fg="black")
-n_neighbors_moreinfo_Labeling.grid(row=0, column=3, sticky=W)
-n_neighbors_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-n_neighbors_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 n_components_Labeling_Error = tk.Label(LabelingUMAPSettings, text="", font=ErrorFont)
 n_components_Labeling_Error.grid(row=3, column=1)
@@ -3108,10 +3238,7 @@ n_components_entry_Labeling.insert(0, "2")
 n_components_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(n_components_entry_Labeling,'n_components_entry_Labeling',n_components_Labeling_Error))
 n_components_entry_Labeling.grid(row=2, column=1)
 n_components_reset_Labeling = tk.Button(LabelingUMAPSettings, text="Reset",command=lambda: ResetLabelingUMAPSetting(n_components_entry_Labeling, LabelingUMAPVars,n_components_Labeling_Error)).grid(row=2, column=2)
-n_components_moreinfo_Labeling = tk.Button(LabelingUMAPSettings, text='?', state="disabled", fg="black")
-n_components_moreinfo_Labeling.grid(row=2, column=3, sticky=W)
-n_components_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-n_components_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 min_dist_Labeling_Error = tk.Label(LabelingUMAPSettings, text="", font=ErrorFont)
 min_dist_Labeling_Error.grid(row=5, column=1)
@@ -3121,10 +3248,7 @@ min_dist_entry_Labeling.insert(0, "0.0")
 min_dist_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(min_dist_entry_Labeling,'min_dist_entry_Labeling',min_dist_Labeling_Error))
 min_dist_entry_Labeling.grid(row=4, column=1)
 min_dist_reset_Labeling = tk.Button(LabelingUMAPSettings, text="Reset",command=lambda: ResetLabelingUMAPSetting(min_dist_entry_Labeling, LabelingUMAPVars,min_dist_Labeling_Error)).grid(row=4, column=2)
-min_dist_moreinfo_Labeling = tk.Button(LabelingUMAPSettings, text='?', state="disabled", fg="black")
-min_dist_moreinfo_Labeling.grid(row=4, column=3, sticky=W)
-min_dist_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-min_dist_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 spread_Labeling_Error = tk.Label(LabelingUMAPSettings, text="", font=ErrorFont)
 spread_Labeling_Error.grid(row=7, column=1)
@@ -3134,10 +3258,7 @@ spread_entry_Labeling.insert(0, "1.0")
 spread_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(spread_entry_Labeling,'spread_entry_Labeling',spread_Labeling_Error))
 spread_entry_Labeling.grid(row=6, column=1)
 spread_reset_Labeling = tk.Button(LabelingUMAPSettings, text="Reset",command=lambda: ResetLabelingUMAPSetting(spread_entry_Labeling, LabelingUMAPVars,spread_Labeling_Error)).grid(row=6, column=2)
-spread_moreinfo_Labeling = tk.Button(LabelingUMAPSettings, text='?', state="disabled", fg="black")
-spread_moreinfo_Labeling.grid(row=6, column=3, sticky=W)
-spread_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-spread_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 metric_Labeling_Error = tk.Label(LabelingUMAPSettings, text="", font=ErrorFont)
 metric_Labeling_Error.grid(row=9, column=1)
@@ -3149,10 +3270,7 @@ metric_variable.set(options_list[0])
 metric_entry_Labeling = tk.OptionMenu(LabelingUMAPSettings, metric_variable, *options_list)
 metric_entry_Labeling.grid(row=8, column=1)
 metric_reset_Labeling = tk.Button(LabelingUMAPSettings, text="Reset",command=lambda: ResetLabelingUMAPSetting(metric_entry_Labeling, LabelingUMAPVars,metric_Labeling_Error)).grid(row=8, column=2)
-metric_moreinfo_Labeling = tk.Button(LabelingUMAPSettings, text='?', state="disabled", fg="black")
-metric_moreinfo_Labeling.grid(row=8, column=3, sticky=W)
-metric_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-metric_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 random_state_Labeling_Error = tk.Label(LabelingUMAPSettings, text="", font=ErrorFont)
 random_state_Labeling_Error.grid(row=11, column=1)
@@ -3162,10 +3280,6 @@ random_state_entry_Labeling.insert(0, "None")
 random_state_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(random_state_entry_Labeling,'random_state_entry_Labeling',random_state_Labeling_Error))
 random_state_entry_Labeling.grid(row=10, column=1)
 random_state_reset_Labeling = tk.Button(LabelingUMAPSettings, text="Reset",command=lambda: ResetLabelingUMAPSetting(random_state_entry_Labeling, LabelingUMAPVars,random_state_Labeling_Error)).grid(row=10, column=2)
-random_state_moreinfo_Labeling = tk.Button(LabelingUMAPSettings, text='?', state="disabled", fg="black")
-random_state_moreinfo_Labeling.grid(row=10, column=3, sticky=W)
-random_state_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-random_state_moreinfo_Labeling.bind("<Leave>", LessInfo)
 
 global LabelingUMAPErrorLabels
 LabelingUMAPErrorLabels = [n_neighbors_Labeling_Error,n_components_Labeling_Error,min_dist_Labeling_Error,spread_Labeling_Error,metric_Labeling_Error,random_state_Labeling_Error]
@@ -3214,10 +3328,6 @@ min_cluster_prop_entry_Labeling.insert(0, "0.04")
 min_cluster_prop_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(min_cluster_prop_entry_Labeling,'min_cluster_prop_entry_Labeling',min_cluster_prop_Labeling_Error))
 min_cluster_prop_entry_Labeling.grid(row=0, column=1)
 min_cluster_prop_reset_Labeling = tk.Button(LabelingClusterSettings, text="Reset",command=lambda: ResetLabelingClusterSetting(Setting="min_cluster_prop")).grid(row=0, column=2)
-min_cluster_prop_moreinfo_Labeling = tk.Button(LabelingClusterSettings, text='?', state="disabled", fg="black")
-min_cluster_prop_moreinfo_Labeling.grid(row=0, column=3, sticky=W)
-min_cluster_prop_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-min_cluster_prop_moreinfo_Labeling.bind("<Leave>", LessInfo)
 
 min_samples_Labeling_Error = tk.Label(LabelingClusterSettings, text="", font=ErrorFont)
 min_samples_Labeling_Error.grid(row=3, column=1)
@@ -3227,10 +3337,7 @@ min_samples_entry_Labeling.insert(0, "5")
 min_samples_entry_Labeling.bind("<FocusOut>", lambda value:Validate_Settings(min_samples_entry_Labeling,'min_samples_entry_Labeling',min_samples_Labeling_Error))
 min_samples_entry_Labeling.grid(row=2, column=1)
 min_samples_reset_Labeling = tk.Button(LabelingClusterSettings, text="Reset",command=lambda: ResetLabelingClusterSetting(Setting="min_samples")).grid(row=2, column=2)
-min_samples_moreinfo_Labeling = tk.Button(LabelingClusterSettings, text='?', state="disabled", fg="black")
-min_samples_moreinfo_Labeling.grid(row=2, column=3, sticky=W)
-min_samples_moreinfo_Labeling.bind("<Enter>", MoreInfo)
-min_samples_moreinfo_Labeling.bind("<Leave>", LessInfo)
+
 
 LabelingClusterVars = [min_cluster_prop_entry_Labeling,spread_entry_Labeling]
 LabelingClusterResetAll = tk.Button(LabelingClusterSettings, text="Reset All", command=lambda: ResetLabelingClusterSetting(Setting="all"))
@@ -3582,10 +3689,6 @@ win_length_entry_Acoustics.insert(0, "400")
 win_length_entry_Acoustics.grid(row=0, column=1)
 win_length_entry_Acoustics.bind("<FocusOut>", lambda value:Validate_Settings(win_length_entry_Acoustics, "win_length_entry_Acoustics",win_length_Acoustics_Error))
 win_length_reset_Acoustics = tk.Button(AcousticsSettingsFrame, text="Reset", command=lambda:ResetAcousticSetting(win_length_entry_Acoustics, EntryList,win_length_Acoustics_Error)).grid(row=0, column=2)
-win_length_moreinfo_Acoustics = tk.Button(AcousticsSettingsFrame, text='?', state="disabled", fg="black")
-win_length_moreinfo_Acoustics.grid(row=0, column=3, sticky=W)
-win_length_moreinfo_Acoustics.bind("<Enter>", MoreInfo)
-win_length_moreinfo_Acoustics.bind("<Leave>", LessInfo)
 
 hop_length_Acoustics_Error = tk.Label(AcousticsSettingsFrame, text="", font=ErrorFont)
 hop_length_Acoustics_Error.grid(row=3, column=1)
@@ -3595,10 +3698,7 @@ hop_length_entry_Acoustics.insert(0, "40")
 hop_length_entry_Acoustics.grid(row=2, column=1)
 hop_length_entry_Acoustics.bind("<FocusOut>", lambda value:Validate_Settings(hop_length_entry_Acoustics, "hop_length_entry_Acoustics",hop_length_Acoustics_Error))
 hop_length_reset_Acoustics = tk.Button(AcousticsSettingsFrame, text="Reset", command=lambda:ResetAcousticSetting(hop_length_entry_Acoustics, EntryList,hop_length_Acoustics_Error)).grid(row=2, column=2)
-hop_length_moreinfo_Acoustics = tk.Button(AcousticsSettingsFrame, text='?', state="disabled", fg="black")
-hop_length_moreinfo_Acoustics.grid(row=2, column=3, sticky=W)
-hop_length_moreinfo_Acoustics.bind("<Enter>", MoreInfo)
-hop_length_moreinfo_Acoustics.bind("<Leave>", LessInfo)
+
 
 n_fft_Acoustics_Error = tk.Label(AcousticsSettingsFrame, text="", font=ErrorFont)
 n_fft_Acoustics_Error.grid(row=5, column=1)
@@ -3608,10 +3708,7 @@ n_fft_entry_Acoustics.insert(0, "1024")
 n_fft_entry_Acoustics.grid(row=4, column=1)
 n_fft_entry_Acoustics.bind("<FocusOut>", lambda value:Validate_Settings(n_fft_entry_Acoustics, "n_fft_entry_Acoustics",n_fft_Acoustics_Error))
 n_fft_reset_Acoustics = tk.Button(AcousticsSettingsFrame, text="Reset", command=lambda:ResetAcousticSetting(n_fft_entry_Acoustics, EntryList,n_fft_Acoustics_Error)).grid(row=4, column=2)
-n_fft_moreinfo_Acoustics = tk.Button(AcousticsSettingsFrame, text='?', state="disabled", fg="black")
-n_fft_moreinfo_Acoustics.grid(row=4, column=3, sticky=W)
-n_fft_moreinfo_Acoustics.bind("<Enter>", MoreInfo)
-n_fft_moreinfo_Acoustics.bind("<Leave>", LessInfo)
+
 
 max_F0_Acoustics_Error = tk.Label(AcousticsSettingsFrame, text="", font=ErrorFont)
 max_F0_Acoustics_Error.grid(row=7, column=1)
@@ -3621,10 +3718,7 @@ max_F0_entry_Acoustics.insert(0, "1830")
 max_F0_entry_Acoustics.grid(row=6, column=1)
 max_F0_entry_Acoustics.bind("<FocusOut>", lambda value:Validate_Settings(max_F0_entry_Acoustics, "max_F0_entry_Acoustics",max_F0_Acoustics_Error))
 max_F0_reset_Acoustics = tk.Button(AcousticsSettingsFrame, text="Reset", command=lambda:ResetAcousticSetting(max_F0_entry_Acoustics, EntryList,max_F0_Acoustics_Error)).grid(row=6, column=2)
-max_F0_moreinfo_Acoustics = tk.Button(AcousticsSettingsFrame, text='?', state="disabled", fg="black")
-max_F0_moreinfo_Acoustics.grid(row=6, column=3, sticky=W)
-max_F0_moreinfo_Acoustics.bind("<Enter>", MoreInfo)
-max_F0_moreinfo_Acoustics.bind("<Leave>", LessInfo)
+
 
 min_frequency_Acoustics_Error = tk.Label(AcousticsSettingsFrame, text="", font=ErrorFont)
 min_frequency_Acoustics_Error.grid(row=9, column=1)
@@ -3634,10 +3728,7 @@ min_frequency_entry_Acoustics.insert(0, "380")
 min_frequency_entry_Acoustics.grid(row=8, column=1)
 min_frequency_entry_Acoustics.bind("<FocusOut>", lambda value:Validate_Settings(min_frequency_entry_Acoustics, "min_frequency_entry_Acoustics",min_frequency_Acoustics_Error))
 min_frequency_reset_Acoustics = tk.Button(AcousticsSettingsFrame, text="Reset", command=lambda:ResetAcousticSetting(min_frequency_entry_Acoustics, EntryList,min_frequency_Acoustics_Error)).grid(row=8, column=2)
-min_frequency_moreinfo_Acoustics = tk.Button(AcousticsSettingsFrame, text='?', state="disabled", fg="black")
-min_frequency_moreinfo_Acoustics.grid(row=8, column=3, sticky=W)
-min_frequency_moreinfo_Acoustics.bind("<Enter>", MoreInfo)
-min_frequency_moreinfo_Acoustics.bind("<Leave>", LessInfo)
+
 
 freq_range_Acoustics_Error = tk.Label(AcousticsSettingsFrame, text="", font=ErrorFont)
 freq_range_Acoustics_Error.grid(row=11, column=1)
@@ -3647,10 +3738,7 @@ freq_range_entry_Acoustics.insert(0, "0.5")
 freq_range_entry_Acoustics.grid(row=10, column=1)
 freq_range_entry_Acoustics.bind("<FocusOut>", lambda value:Validate_Settings(freq_range_entry_Acoustics, "freq_range_entry_Acoustics",freq_range_Acoustics_Error))
 freq_range_reset_Acoustics = tk.Button(AcousticsSettingsFrame, text="Reset", command=lambda:ResetAcousticSetting(freq_range_entry_Acoustics, EntryList,freq_range_Acoustics_Error)).grid(row=10, column=2)
-freq_range_moreinfo_Acoustics = tk.Button(AcousticsSettingsFrame, text='?', state="disabled", fg="black")
-freq_range_moreinfo_Acoustics.grid(row=10, column=3, sticky=W)
-freq_range_moreinfo_Acoustics.bind("<Enter>", MoreInfo)
-freq_range_moreinfo_Acoustics.bind("<Leave>", LessInfo)
+
 
 baseline_amp_Acoustics_Error = tk.Label(AcousticsSettingsFrame, text="", font=ErrorFont)
 baseline_amp_Acoustics_Error.grid(row=13, column=1)
@@ -3660,10 +3748,7 @@ baseline_amp_entry_Acoustics.insert(0, "70")
 baseline_amp_entry_Acoustics.grid(row=12, column=1)
 baseline_amp_entry_Acoustics.bind("<FocusOut>", lambda value:Validate_Settings(baseline_amp_entry_Acoustics, "baseline_amp_entry_Acoustics",baseline_amp_Acoustics_Error))
 baseline_amp_reset_Acoustics = tk.Button(AcousticsSettingsFrame, text="Reset", command=lambda:ResetAcousticSetting(baseline_amp_entry_Acoustics, EntryList,baseline_amp_Acoustics_Error)).grid(row=12, column=2)
-baseline_amp_moreinfo_Acoustics = tk.Button(AcousticsSettingsFrame, text='?', state="disabled", fg="black")
-baseline_amp_moreinfo_Acoustics.grid(row=12, column=3, sticky=W)
-baseline_amp_moreinfo_Acoustics.bind("<Enter>", MoreInfo)
-baseline_amp_moreinfo_Acoustics.bind("<Leave>", LessInfo)
+
 
 fmax_yin_Acoustics_Error = tk.Label(AcousticsSettingsFrame, text="", font=ErrorFont)
 fmax_yin_Acoustics_Error.grid(row=15, column=1)
@@ -3673,10 +3758,7 @@ fmax_yin_entry_Acoustics.insert(0, "8000")
 fmax_yin_entry_Acoustics.grid(row=14, column=1)
 fmax_yin_entry_Acoustics.bind("<FocusOut>", lambda value:Validate_Settings(fmax_yin_entry_Acoustics, "fmax_yin_entry_Acoustics",fmax_yin_Acoustics_Error))
 fmax_yin_reset_Acoustics = tk.Button(AcousticsSettingsFrame, text="Reset", command=lambda:ResetAcousticSetting(fmax_yin_entry_Acoustics, EntryList,fmax_yin_Acoustics_Error)).grid(row=14, column=2)
-fmax_yin_moreinfo_Acoustics = tk.Button(AcousticsSettingsFrame, text='?', state="disabled", fg="black")
-fmax_yin_moreinfo_Acoustics.grid(row=14, column=3, sticky=W)
-fmax_yin_moreinfo_Acoustics.bind("<Enter>", MoreInfo)
-fmax_yin_moreinfo_Acoustics.bind("<Leave>", LessInfo)
+
 
 EntryList = [win_length_entry_Acoustics, hop_length_entry_Acoustics, n_fft_entry_Acoustics, max_F0_entry_Acoustics,
              min_frequency_entry_Acoustics, freq_range_entry_Acoustics, baseline_amp_entry_Acoustics,
@@ -3716,8 +3798,7 @@ global MultiAcousticsOutputDisplay
 MultiAcousticsOutputDisplay = tk.Label(AcousticsMainFrameMulti, text=Dir_Width*" ", bg="light grey")
 MultiAcousticsOutputDisplay.grid(row=3, column=1, padx=Padding_Width, sticky="w")
 MultiAcousticsPadding = tk.Label(AcousticsMainFrameMulti, text=" ").grid(row=4)
-MultiAcousticsText = tk.Label(AcousticsMainFrameMulti, text="Acoustic features to analyze:", justify="center")
-MultiAcousticsText.grid(row=5, column=1)
+MultiAcousticsText = tk.Label(AcousticsMainFrameMulti, text="Acoustic features to analyze:", justify="center").grid(row=5, column=1)
 
 MultiAcoustics_MoreInfoTitle = tk.Label(AcousticsMainFrameMulti, text="", font=("Arial", 15, "bold"))
 MultiAcoustics_MoreInfoTitle.grid(row=0, column=5)
@@ -3887,6 +3968,20 @@ min_gap_moreinfo_Syntax.grid(row=0, column=3, sticky=W)
 min_gap_moreinfo_Syntax.bind("<Enter>", MoreInfo)
 min_gap_moreinfo_Syntax.bind("<Leave>", LessInfo)
 
+min_sylls_Syntax_Error = tk.Label(SyntaxSettingsFrame, text="", font=ErrorFont)
+min_sylls_Syntax_Error.grid(row=3, column=1)
+min_gap_text_Syntax = tk.Label(SyntaxSettingsFrame, text="min_sylls").grid(row=2, column=0)
+min_sylls = StringVar()
+min_sylls.set("1")
+min_sylls_Syntax = ttk.Spinbox(SyntaxSettingsFrame, justify="center", from_=1, to=10, textvariable=min_sylls)
+min_sylls_Syntax.grid(row=2, column=1)
+min_sylls_Syntax.bind("<FocusOut>", lambda value:Validate_Settings(min_sylls_Syntax, "min_sylls_Syntax",min_sylls_Syntax_Error))
+min_sylls_reset_Syntax = tk.Button(SyntaxSettingsFrame, text="Reset",command=lambda: ResetSyntaxSetting()).grid(row=2, column=2)
+min_sylls_moreinfo_Syntax = tk.Button(SyntaxSettingsFrame, text='?', state="disabled", fg="black")
+min_sylls_moreinfo_Syntax.grid(row=2, column=3, sticky=W)
+min_sylls_moreinfo_Syntax.bind("<Enter>", MoreInfo)
+min_sylls_moreinfo_Syntax.bind("<Leave>", LessInfo)
+
 SyntaxDialogTitle = tk.Label(SyntaxSettingsFrame, text="", font=("Arial", 25, "bold"),justify="center")
 SyntaxDialogTitle.grid(row=0, column=4, rowspan=2)
 SyntaxDialog = tk.Label(SyntaxSettingsFrame, text="", justify="center")
@@ -4052,10 +4147,8 @@ MatrixHeatmap_Button = tk.Button(Syntax_HeatmapTab, text="Generate Matrix Heatma
 MatrixHeatmap_Button.grid(row=7, column=0, columnspan=2)
 
 def GenerateRasterPlot(RunAll = False):
-    try: # Clear previous plot, if one exists
-        plt.close(fig)
-    except:
-        pass
+    plt.clf()
+    plt.cla()
     if RunAll == False:
         global Syntax_Raster_Input
         Bird_ID = Syntax_Raster_BirdID.get()
@@ -4088,17 +4181,26 @@ def GenerateRasterPlot(RunAll = False):
         #     RasterOutputDirectory = RasterOutputDirectory+i+"/"
         else:
             if ChangeFigSize2.get() == 1:
-                X = int(X_Size2.get())
-                Y = int(Y_Size2.get())
+                X = int(FigSize_X2.get())
+                Y = int(FigSize_X2.get())
             else:
                 X = 6
                 Y = 6
-
             if SyntaxAlignmentVar.get() != "Auto":
                 syntax_raster_df = syntax_data.make_syntax_raster(alignment_syllable=int(SyntaxAlignmentVar.get()))
 
             if SyntaxAlignmentVar.get() == "Auto":
                 syntax_raster_df = syntax_data.make_syntax_raster()
+
+            for index, row in syntax_raster_df.iterrows():
+                temprow_sum = row.isna().sum()
+                if len(syntax_raster_df.columns) - temprow_sum < int(min_sylls_Syntax.get()):
+                    syntax_raster_df = syntax_raster_df.drop([index])
+
+
+            syntax_raster_df.to_csv(SyntaxOutputFolder+"Raster_df.csv")
+            # print(syntax_raster_df)
+            # print("Saved Raster_df at "+SyntaxOutputFolder+"Raster_df.csv")
 
             Bird_ID = Syntax_Raster_BirdID.get()
             FigTitle = str(Bird_ID)+" Syntax Raster"
@@ -4149,6 +4251,9 @@ def GenerateRasterPlot(RunAll = False):
         syntax_raster_df = syntax_data.make_syntax_raster()
         FigTitle = str(Bird_ID) + " Syntax Raster"
         fig = avn.plotting.plot_syntax_raster(syntax_data, syntax_raster_df, title=FigTitle, figsize=(X, Y))
+
+    # plt.clf()
+    # plt.cla()
 
 Syntax_MoreInfoTitle3 = tk.Label(Syntax_RasterTab, text="", font=("Arial", 15, "bold"))
 Syntax_MoreInfoTitle3.grid(row=0, column=5)
@@ -4497,7 +4602,9 @@ Similarity_MoreInfoTitle = tk.Label(PrepSpectrograms, text="", font=("Arial", 15
 Similarity_MoreInfoTitle.grid(row=0, column=5)
 Similarity_MoreInfoBody = tk.Label(PrepSpectrograms, text="")
 Similarity_MoreInfoBody.grid(row=1, column=5, rowspan=5, sticky="n")
-# Create EMD and UMAP #
+
+
+# Calculate EMD #
 Title_Left = tk.Label(OutputSimilarity, text="Bird 1", justify="center").grid(row=0, column=0, columnspan=2, sticky="N")
 Title_Right = tk.Label(OutputSimilarity, text="Bird 2", justify="center").grid(row=0, column=4, columnspan=2, sticky="N")
 
@@ -4507,23 +4614,32 @@ SimilarityInput_Button2.grid(row=1, column=0)
 global SimilarityInput2
 SimilarityInput2 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
 SimilarityInput2.grid(row=1, column=1, columnspan=2, sticky="W", padx=Padding_Width)
-Similarity_BirdID_Label2 = tk.Label(OutputSimilarity, text="Bird ID: ").grid(row=2, column=0)
+# SimilaritySegTable2_Button = tk.Button(OutputSimilarity, text='Select Segmentation File', command=lambda:FileExplorer("Similarity_Seg","Input"))
+# SimilaritySegTable2_Button.grid(row=2, column=0)
+# SimilaritySegTable2 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
+# SimilaritySegTable2.grid(row=2, column=1)
+Similarity_BirdID_Label2 = tk.Label(OutputSimilarity, text="Bird ID: ").grid(row=3, column=0)
 global Similarity_BirdID2
 Similarity_BirdID2 = tk.Entry(OutputSimilarity, font=("Arial", 15), justify="center", fg="grey", bg="white",
                               width=BirdID_Width)
-Similarity_BirdID2.grid(row=2, column=1, padx=Padding_Width, sticky="w")
+Similarity_BirdID2.grid(row=3, column=1, padx=Padding_Width, sticky="w")
 Similarity_BirdID2.insert(0, "Bird ID")
 Similarity_BirdID2.bind("<FocusIn>", focus_in)
 Similarity_BirdID2.bind("<FocusOut>", focus_out)
 
-PaddingRow = tk.Label(OutputSimilarity, text=" ", font=("Arial", 15)).grid(row=3)
+Similarity_SyllablestoCompare_Label_1 = tk.Label(OutputSimilarity, text="Max number of syllables to compare for this bird:").grid(row=4, column=4)
+global Syll_1
+Syll_1 = StringVar()
+Syll_1.set("4000")
+Similarity_SyllablestoCompare_1 = tk.Spinbox(OutputSimilarity, from_=250, to=10000, increment=250, textvariable=Syll_1)
+Similarity_SyllablestoCompare_1.grid(row=4, column=5)
+
 SimilarityOutput_Button2 = tk.Button(OutputSimilarity, text="Select Output Directory",
                                      command=lambda: FileExplorer("Similarity_Out1", "Output"),justify="center")
-SimilarityOutput_Button2.grid(row=4, column=1, columnspan=2, sticky='e')
+SimilarityOutput_Button2.grid(row=5, column=1, columnspan=2, sticky='e')
 global SimilarityOutput2
 SimilarityOutput2 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
-SimilarityOutput2.grid(row=4, column=3, columnspan=2, sticky="W", padx=Padding_Width)
-
+SimilarityOutput2.grid(row=5, column=3, columnspan=2, sticky="W", padx=Padding_Width)
 
 Similarity_MoreInfoBox2 = tk.Button(OutputSimilarity, text="?", state=DISABLED)
 Similarity_MoreInfoBox2.grid(row=1, column=3, sticky="W")
@@ -4531,21 +4647,31 @@ Similarity_MoreInfoBox2.bind("<Enter>", MoreInfo)
 Similarity_MoreInfoBox2.bind("<Leave>", LessInfo)
 
 # Create Similarity EMD for second bird #
-PaddingColumn = tk.Label(OutputSimilarity, text=" "*5).grid(row=0, column=3)
 SimilarityInput_Button3 = tk.Button(OutputSimilarity, text="Select Syllable Dataset",
                                    command=lambda: FileExplorer("Similarity_Out2", "Input"))
 SimilarityInput_Button3.grid(row=1, column=4)
 global SimilarityInput3
 SimilarityInput3 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
 SimilarityInput3.grid(row=1, column=5, columnspan=1, sticky="W", padx=Padding_Width)
-Similarity_BirdID_Label3 = tk.Label(OutputSimilarity, text="Bird ID: ").grid(row=2, column=4)
+Similarity_BirdID_Label3 = tk.Label(OutputSimilarity, text="Bird ID: ").grid(row=3, column=4)
+# SimilaritySegTable3_Button = tk.Button(OutputSimilarity, text='Select Segmentation File', command=lambda:FileExplorer("Similarity_Seg2","Input"))
+# SimilaritySegTable3_Button.grid(row=2, column=4)
+# SimilaritySegTable3 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
+# SimilaritySegTable3.grid(row=2, column=5)
 global Similarity_BirdID3
 Similarity_BirdID3 = tk.Entry(OutputSimilarity, font=("Arial", 15), justify="center", fg="grey", bg="white",
                              width=BirdID_Width)
-Similarity_BirdID3.grid(row=2, column=5, sticky="W", padx=Padding_Width)
+Similarity_BirdID3.grid(row=3, column=5, sticky="W", padx=Padding_Width)
 Similarity_BirdID3.insert(0, "Bird ID")
 Similarity_BirdID3.bind("<FocusIn>", focus_in)
 Similarity_BirdID3.bind("<FocusOut>", focus_out)
+
+Similarity_SyllablestoCompare_Label_2 = tk.Label(OutputSimilarity, text="Max number of syllables to compare for this bird:").grid(row=4, column=0)
+global Syll_2
+Syll_2 = StringVar()
+Syll_2.set("4000")
+Similarity_SyllablestoCompare_2 = tk.Spinbox(OutputSimilarity, from_=250, to=5000, increment=250, textvariable=Syll_2)
+Similarity_SyllablestoCompare_2.grid(row=4, column=1)
 
 Similarity_MoreInfoBox3 = tk.Button(OutputSimilarity, text="?", state=DISABLED)
 Similarity_MoreInfoBox3.grid(row=1, column=6, sticky="W")
@@ -4615,6 +4741,30 @@ def GenerateMoreInfoButtons():
             InfoButton2.grid(row=2, column=3, sticky="W", pady=1)
             InfoButton2.bind("<Enter>", MoreInfo)
             InfoButton2.bind("<Leave>", LessInfo)
+
+    # Acoustics Settings
+    for i in range(8):
+        InfoButton = tk.Button(AcousticsSettingsFrame, text='?', state="disabled", fg="black")
+        InfoButton.grid(row=2 * i, column=3, sticky='W')
+        InfoButton.bind("<Enter>", MoreInfo)
+        InfoButton.bind("<Leave>", LessInfo)
+
+    # Labeling Settings
+    for a in range(8):
+        InfoButton = tk.Button(LabelingSettingsFrame, text='?', state="disabled", fg="black")
+        InfoButton.grid(row=2*a, column=3, sticky='W')
+        InfoButton.bind("<Enter>", MoreInfo)
+        InfoButton.bind("<Leave>", LessInfo)
+    for b in range(6):
+        InfoButton = tk.Button(LabelingUMAPSettings, text='?', state="disabled", fg="black")
+        InfoButton.grid(row=2*b, column=3, sticky='W')
+        InfoButton.bind("<Enter>", MoreInfo)
+        InfoButton.bind("<Leave>", LessInfo)
+    for c in range(2):
+        InfoButton = tk.Button(LabelingClusterSettings, text='?', state="disabled", fg="black")
+        InfoButton.grid(row=2*c, column=3, sticky='W')
+        InfoButton.bind("<Enter>", MoreInfo)
+        InfoButton.bind("<Leave>", LessInfo)
 
 GenerateMoreInfoButtons()
 
@@ -4803,7 +4953,7 @@ def GenerateInfoTabs():
                     "\n            indicate higher similarity, and high values indicate higher similarity. Typically, tutor-pupil pairs will have score around "
                     "\n            0.65 and unrelated birds will have scores around 0.85. For more information on this scoring, see: "
                     "\n"}
-    TitleDict = {"HomeNotebook":"Welcome to the AVN GUI!",
+    TitleDict = {"HomeNotebook":"Welcome to the AVN GUI! (version 0.2.0)",
                 "LabelingNotebook": "Labeling",
                 "AcousticsNotebook": "Acoustics",
                 "SyntaxNotebook": "Syntax",
