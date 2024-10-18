@@ -12,7 +12,7 @@
 # pyinstaller --collect-submodules "sklearn" --icon="C:/Users/ethan/Desktop/Animal__ZebraFinch1.ico" gui.py
 
 global gui_version
-gui_version = "0.2.0a"
+gui_version = "0.2.1a"
 global avn_version
 avn_version = "0.5.0"
 
@@ -540,13 +540,13 @@ def Labeling():
                 LabelingErrorMessage.config(text="Missing bird id")
         except: # Neither file path nor Bird ID chosen
             LabelingErrorMessage.config(text="Missing segmentation folder and bird id")
-    elif LabelingBirdIDText.get() != "Bird ID" and pattern.search(LabelingBirdIDText.get()) == None:
-        #if "wseg" not in LabelingFileDisplay.cget("text"):
-        if seg_path_check.search(segmentations_path[0]) == None:
-            LabelingErrorMessage.config(text="Invalid segmentation file and invalid bird id")
-        else:
-            LabelingErrorMessage.config(text="Invalid Bird ID")
-    elif pattern.search(LabelingBirdIDText.get()) != None:
+    # elif LabelingBirdIDText.get() != "Bird ID" and pattern.search(LabelingBirdIDText.get()) == None:
+    #     #if "wseg" not in LabelingFileDisplay.cget("text"):
+    #     if seg_path_check.search(segmentations_path[0]) == None:
+    #         LabelingErrorMessage.config(text="Invalid segmentation file and invalid bird id")
+    #     else:
+    #         LabelingErrorMessage.config(text="Invalid Bird ID")
+    else:
         try:  # Only segmentation path missing
             LabelingFileDisplay.cget("text")
         except:
@@ -2991,6 +2991,7 @@ Labeling_Rand_Num = ttk.Spinbox(LabelingSettingsFrame,from_=5, to=100, increment
 MinSyllsLabel_Text = tk.Label(LabelingSettingsFrame, text="Minimum length of bout to be labeled:").grid(row=17,column=0)
 global MinSyllsLabel
 MinSyllsLabel = StringVar()
+MinSyllsLabel.set("1")
 Labeling_Min_Sylls = ttk.Spinbox(LabelingSettingsFrame, from_=1, to=10, increment=1, textvariable=MinSyllsLabel, width=10).grid(row=17, column=1, padx=Padding_Width)
 
 def LabelingOutputDirectory():
