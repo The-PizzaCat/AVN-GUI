@@ -523,6 +523,17 @@ def Labeling():
     global OutputFolder
     global LabelingSongLocation
 
+    try:
+        LabelingErrorMessage.config(text="")
+    except: pass
+    try:
+        LabelingProgress_Text.destroy()
+    except:
+        pass
+    try:
+        LabelingProgress_Bar.destroy()
+    except:
+        pass
     UMAP_Directories = []
     Bird_ID = LabelingBirdIDText.get()
 
@@ -650,8 +661,9 @@ def Labeling():
                         global MinSyllsLabel
                         if int(MinSyllsLabel.get()) > 1:
                             MinSylls_filelist = []
-                            for f in segmentations["files"]:
-                                if segmentations["files"].count(f) > int(MinSyllsLabel):
+                            for f in segmentations["files"].unique():
+                                temp_df_for_counting = segmentations[segmentations["files"]==f]
+                                if len(temp_df_for_counting["files"].tolist()) > int(MinSyllsLabel.get()):
                                     MinSylls_filelist.append(f)
                             segmentations = segmentations[segmentations['files'].isin(MinSylls_filelist)]
 
@@ -700,7 +712,6 @@ def Labeling():
                             else:
                                 SongIndex = segmentations.index[segmentations['files'] == song_file].tolist()
                                 file_path = Song_Location.replace("\\", "/") + song_file
-
                                 song = dataloading.SongFile(file_path)
                                 song.bandpass_filter(int(bandpass_lower_cutoff_entry_Labeling.get()),
                                                      int(bandpass_upper_cutoff_entry_Labeling.get()))
@@ -711,7 +722,7 @@ def Labeling():
                                                         for st, et in
                                                         zip(syllable_df.onsets.values, syllable_df.offsets.values)]
                                 syllable_dfs = pd.concat([syllable_dfs, syllable_df])
-
+                                # print(syllable_df["audio"])
                         LabelingProgress.set(0)
 
                         # Normalize the audio  --- Ethan's comment: This won't work when there's an empty array for syllable_dfs_audio_values, so I'm just going to set those to '[0]'
@@ -937,10 +948,10 @@ def Labeling():
                         print("Unable to process " + directory+":")
                         traceback.print_exc()
 
-    else:
-        LabelingErrorMessage.config(text="Invalid segmentation file")
-        LabelingErrorMessage.update()
-        print("Invalid segmentation file")
+    # else:
+    #     LabelingErrorMessage.config(text="Invalid segmentation file")
+    #     LabelingErrorMessage.update()
+    #     print("Invalid segmentation file")
 
 def LabelingDisplay(Direction):
     ## Generates a popup window with sample labeled spectrograms. Users can navigate between multiple spectrograms, with a hard-coded maximum
@@ -2477,9 +2488,9 @@ def SimilarityScoring_Output():
         SimilarityProgressBar.destroy()
     except: pass
     SimilarityProgressMessage = tk.Label(OutputSimilarity, text="Calculating Similarity...")
-    SimilarityProgressMessage.grid(row=10, column=2)
+    SimilarityProgressMessage.grid(row=20, column=1)
     SimilarityProgressBar = ttk.Progressbar(OutputSimilarity, mode="determinate", maximum=5)
-    SimilarityProgressBar.grid(row=11, column=2)
+    SimilarityProgressBar.grid(row=21, column=1)
     OutputFolder = str(SimilarityOutput2.cget("text"))+"/SimilarityComparison_"+Bird_ID_2+"-"+Bird_ID_3+"/"
     try:
         os.makedirs(OutputFolder)
@@ -2623,6 +2634,13 @@ def SimilarityScoring_Output():
                                        "gui_version":[gui_version]})
     SimilarityMetadata.to_csv(OutputFolder+"Similarity_Metadata.csv")
 
+    try:
+        os.rmdir(spectrograms_dir_2)
+    except: pass
+    try:
+        os.rmdir(spectrograms_dir_3)
+    except: pass
+
     SimilarityProgressBar.step()
     SimilarityProgressBar.destroy()
     SimilarityProgressMessage.config(text="Calculations Complete!")
@@ -2750,7 +2768,7 @@ def RunAllModules():
 
 ### Initialize gui ###
 gui = tk.Tk()
-gui.title("AVN GUI 0.2.0")
+gui.title("AVN GUI 0.2.1a")
 gui.resizable(False, False)
 
 # ParentStyle = ttk.Style()
@@ -4606,15 +4624,15 @@ Similarity_MoreInfoBody.grid(row=1, column=5, rowspan=5, sticky="n")
 
 
 # Calculate EMD #
-Title_Left = tk.Label(OutputSimilarity, text="Bird 1", justify="center").grid(row=0, column=0, columnspan=2, sticky="N")
-Title_Right = tk.Label(OutputSimilarity, text="Bird 2", justify="center").grid(row=0, column=4, columnspan=2, sticky="N")
+Title_Left = tk.Label(OutputSimilarity, text="Bird 1", justify="center",font=("Arial", 10, "bold")).grid(row=0, column=0, columnspan=2, sticky="N")
+Title_Right = tk.Label(OutputSimilarity, text="Bird 2", justify="center",font=("Arial", 10, "bold")).grid(row=6, column=0, columnspan=2, sticky="N")
 
 SimilarityInput_Button2 = tk.Button(OutputSimilarity, text="Select Syllable Dataset",
                                     command=lambda: FileExplorer("Similarity_Out1", "Input"))
 SimilarityInput_Button2.grid(row=1, column=0)
 global SimilarityInput2
 SimilarityInput2 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
-SimilarityInput2.grid(row=1, column=1, columnspan=2, sticky="W", padx=Padding_Width)
+SimilarityInput2.grid(row=1, column=1, columnspan=1, sticky="W", padx=Padding_Width)
 # SimilaritySegTable2_Button = tk.Button(OutputSimilarity, text='Select Segmentation File', command=lambda:FileExplorer("Similarity_Seg","Input"))
 # SimilaritySegTable2_Button.grid(row=2, column=0)
 # SimilaritySegTable2 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
@@ -4628,33 +4646,33 @@ Similarity_BirdID2.insert(0, "Bird ID")
 Similarity_BirdID2.bind("<FocusIn>", focus_in)
 Similarity_BirdID2.bind("<FocusOut>", focus_out)
 
-Similarity_SyllablestoCompare_Label_1 = tk.Label(OutputSimilarity, text="Max number of syllables to compare for this bird:").grid(row=4, column=4)
+Similarity_SyllablestoCompare_Label_1 = tk.Label(OutputSimilarity, text="Max number of syllables to compare for this bird:").grid(row=9, column=0)
 global Syll_1
 Syll_1 = StringVar()
 Syll_1.set("4000")
 Similarity_SyllablestoCompare_1 = tk.Spinbox(OutputSimilarity, from_=250, to=10000, increment=250, textvariable=Syll_1)
-Similarity_SyllablestoCompare_1.grid(row=4, column=5)
+Similarity_SyllablestoCompare_1.grid(row=9, column=1, sticky='w')
 
 SimilarityOutput_Button2 = tk.Button(OutputSimilarity, text="Select Output Directory",
                                      command=lambda: FileExplorer("Similarity_Out1", "Output"),justify="center")
-SimilarityOutput_Button2.grid(row=5, column=1, columnspan=2, sticky='e')
+SimilarityOutput_Button2.grid(row=13, column=0, columnspan=1, sticky='n', pady=5)
 global SimilarityOutput2
 SimilarityOutput2 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
-SimilarityOutput2.grid(row=5, column=3, columnspan=2, sticky="W", padx=Padding_Width)
+SimilarityOutput2.grid(row=13, column=1, columnspan=3, sticky="W", padx=Padding_Width)
 
 Similarity_MoreInfoBox2 = tk.Button(OutputSimilarity, text="?", state=DISABLED)
-Similarity_MoreInfoBox2.grid(row=1, column=3, sticky="W")
+Similarity_MoreInfoBox2.grid(row=1, column=2, sticky="W")
 Similarity_MoreInfoBox2.bind("<Enter>", MoreInfo)
 Similarity_MoreInfoBox2.bind("<Leave>", LessInfo)
 
 # Create Similarity EMD for second bird #
 SimilarityInput_Button3 = tk.Button(OutputSimilarity, text="Select Syllable Dataset",
                                    command=lambda: FileExplorer("Similarity_Out2", "Input"))
-SimilarityInput_Button3.grid(row=1, column=4)
+SimilarityInput_Button3.grid(row=7, column=0)
 global SimilarityInput3
 SimilarityInput3 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
-SimilarityInput3.grid(row=1, column=5, columnspan=1, sticky="W", padx=Padding_Width)
-Similarity_BirdID_Label3 = tk.Label(OutputSimilarity, text="Bird ID: ").grid(row=3, column=4)
+SimilarityInput3.grid(row=7, column=1, columnspan=1, sticky="W", padx=Padding_Width)
+Similarity_BirdID_Label3 = tk.Label(OutputSimilarity, text="Bird ID: ").grid(row=8, column=0)
 # SimilaritySegTable3_Button = tk.Button(OutputSimilarity, text='Select Segmentation File', command=lambda:FileExplorer("Similarity_Seg2","Input"))
 # SimilaritySegTable3_Button.grid(row=2, column=4)
 # SimilaritySegTable3 = tk.Label(OutputSimilarity, text=Dir_Width * " ", bg="light grey")
@@ -4662,7 +4680,7 @@ Similarity_BirdID_Label3 = tk.Label(OutputSimilarity, text="Bird ID: ").grid(row
 global Similarity_BirdID3
 Similarity_BirdID3 = tk.Entry(OutputSimilarity, font=("Arial", 15), justify="center", fg="grey", bg="white",
                              width=BirdID_Width)
-Similarity_BirdID3.grid(row=3, column=5, sticky="W", padx=Padding_Width)
+Similarity_BirdID3.grid(row=8, column=1, sticky="W", padx=Padding_Width)
 Similarity_BirdID3.insert(0, "Bird ID")
 Similarity_BirdID3.bind("<FocusIn>", focus_in)
 Similarity_BirdID3.bind("<FocusOut>", focus_out)
@@ -4672,26 +4690,26 @@ global Syll_2
 Syll_2 = StringVar()
 Syll_2.set("4000")
 Similarity_SyllablestoCompare_2 = tk.Spinbox(OutputSimilarity, from_=250, to=5000, increment=250, textvariable=Syll_2)
-Similarity_SyllablestoCompare_2.grid(row=4, column=1)
+Similarity_SyllablestoCompare_2.grid(row=4, column=1, sticky='w')
 
 Similarity_MoreInfoBox3 = tk.Button(OutputSimilarity, text="?", state=DISABLED)
-Similarity_MoreInfoBox3.grid(row=1, column=6, sticky="W")
+Similarity_MoreInfoBox3.grid(row=7, column=2, sticky="W")
 Similarity_MoreInfoBox3.bind("<Enter>", MoreInfo)
 Similarity_MoreInfoBox3.bind("<Leave>", LessInfo)
 
 Similarity_MoreInfoTitle2 = tk.Label(OutputSimilarity, text="", font=("Arial", 15, "bold"))
-Similarity_MoreInfoTitle2.grid(row=0, column=10)
+Similarity_MoreInfoTitle2.grid(row=0, column=5)
 Similarity_MoreInfoBody2 = tk.Label(OutputSimilarity, text="")
-Similarity_MoreInfoBody2.grid(row=1, column=10, rowspan=5, sticky="n")
+Similarity_MoreInfoBody2.grid(row=1, column=5, rowspan=5, sticky="n")
 
-PadRunButton = tk.Label(OutputSimilarity, text=" ", font=("Arial", 15)).grid(row=5)
+# PadRunButton = tk.Label(OutputSimilarity, text=" ", font=("Arial", 15)).grid(row=5)
 
 global SaveEmbedding
 SaveEmbedding = IntVar()
 SaveEmbedding_Checkbox = tk.Checkbutton(OutputSimilarity, text="Save Embedding Data", variable=SaveEmbedding)
-SaveEmbedding_Checkbox.grid(row=6, column=1, columnspan=4, sticky="S")
+SaveEmbedding_Checkbox.grid(row=15, column=1, columnspan=1, sticky="S")
 RunSimilarity_Comparison = tk.Button(OutputSimilarity, text="Compare Birds", command=lambda: SimilarityScoring_Output())
-RunSimilarity_Comparison.grid(row=7, column=1, columnspan=4, sticky="S")
+RunSimilarity_Comparison.grid(row=16, column=1, columnspan=1, sticky="S")
 
 def GenerateMoreInfoButtons():
     TabList = [GlobalInputsFrame,LabelingMainFrame,LabelingSpectrogram_UMAP, AcousticsMainFrameMulti,AcousticsMainFrameSingle,SyntaxMainFrame, Syntax_HeatmapTab,Syntax_RasterTab,SyllableTiming,RhythmSpectrogram,PrepSpectrograms, RunAll_ImportantFrame]
@@ -4954,7 +4972,7 @@ def GenerateInfoTabs():
                     "\n            indicate higher similarity, and high values indicate higher similarity. Typically, tutor-pupil pairs will have score around "
                     "\n            0.65 and unrelated birds will have scores around 0.85. For more information on this scoring, see: "
                     "\n"}
-    TitleDict = {"HomeNotebook":"Welcome to the AVN GUI! (version 0.2.0)",
+    TitleDict = {"HomeNotebook":"Welcome to the AVN GUI! (version 0.2.1a)",
                 "LabelingNotebook": "Labeling",
                 "AcousticsNotebook": "Acoustics",
                 "SyntaxNotebook": "Syntax",
