@@ -495,6 +495,46 @@ def FileExplorer(Module, Type):
             if len(song_path_temp) > 0:
                 GlobalInputs_SongDir.config(text=song_path_temp)
                 GlobalInputs_SongDir.update()
+    elif Module == "Advanced Syntax":
+        if Type == "Input":
+            global AdvancedSyntax_InputText
+            InputDir_temp = filedialog.askopenfilename(filetypes=[(".csv files", "*.csv")])
+            if len(InputDir_temp) > 0:
+                AdvancedSyntax_InputText.config(text=InputDir_temp)
+                AdvancedSyntax_InputText.update()
+
+                Raster_df = pd.read_csv(AdvancedSyntax_InputText.cget("text"))
+                # Raster_df = Raster_df.set_index("Unnamed: 0")
+                global AdvancedSyntax_AlignmentChoices
+                global AdvancedSyntax_Syll
+                global AdvancedSyntax_AllignmentSyll
+                # for i, row in Raster_df.iterrows():
+                #     row = row.unique().tolist()
+                #     for element in row:
+                #         if str(element) not in AdvancedSyntax_AlignmentChoices:
+                #             AdvancedSyntax_AlignmentChoices.append(str(element))
+                UniqueLabels = Raster_df.labels.unique().tolist()
+                for label in UniqueLabels:
+                    try:
+                        float(label)
+                        AdvancedSyntax_AlignmentChoices.append(str(label))
+                    except:
+                        pass
+                AdvancedSyntax_AlignmentChoices.pop(0)
+
+                AdvancedSyntax_AlignmentChoices.sort()
+
+                AdvancedSyntax_Syll.destroy()
+                AdvancedSyntax_AllignmentSyll.set(AdvancedSyntax_AlignmentChoices[0])
+                AdvancedSyntax_Syll = tk.OptionMenu(AdvancedSyntaxTab, AdvancedSyntax_AllignmentSyll, *AdvancedSyntax_AlignmentChoices)
+                AdvancedSyntax_Syll.grid(row=4, column=1, sticky="w", padx=Padding_Width)
+
+        if Type == "Output":
+            global AdvancedSyntax_OutputText
+            OutputDir_temp = filedialog.askdirectory()
+            if len(OutputDir_temp) > 0:
+                AdvancedSyntax_OutputText.config(text=OutputDir_temp)
+                AdvancedSyntax_OutputText.update()
 
 def ResetAcousticsOffset():
     ## Resets the 'Offset' input for calculating acoustics for individual .wav files ##
@@ -1813,6 +1853,304 @@ def Syntax(RunAll=False, Mode="Syntax"):
 
 
     return syntax_data
+
+def AdvancedSyntax(Mode):
+    import avn.syntax as syntax
+    import avn.plotting as plotting
+
+    global gui_version
+
+    global AdvancedSyntax_InputText
+    global AdvancedSyntax_OutputText
+    global AdvancedSyntax_Syll
+
+    try:
+        AdvancedSyntax_Progress.destroy()
+    except:
+        pass
+    try:
+        AdvancedSyntax_Progress.destroy()
+    except:
+        pass
+
+    AdvancedSyntax_Progress = tk.Label(AdvancedSyntaxTab, text="Running...")
+    AdvancedSyntax_Progress.grid(row=20, column=0, columnspan=2)
+    AdvancedSyntax_ProgressBar = ttk.Progressbar(AdvancedSyntaxTab, mode="determinate", maximum=5)
+    AdvancedSyntax_ProgressBar.grid(row=21, column=0, columnspan=2)
+
+    syll_df = pd.read_csv(AdvancedSyntax_InputText.cget("text"))
+
+    merged_syntax_data = pd.DataFrame()
+    directory = AdvancedSyntax_OutputText.cget("text") + "/"
+    AdvancedSyntax_OutputFolder = directory + "/Advanced_Syntax/"
+    try:
+        os.makedirs(AdvancedSyntax_OutputFolder)
+    except:
+        pass
+    SyntaxOutputFolder = AdvancedSyntax_OutputFolder
+    AdvancedSyntax_ProgressBar.step(1)
+    AdvancedSyntax_ProgressBar.update()
+
+    # file = "C:/Users/ethan/Desktop/Massimo_Rasters/O908/145/_syll_df.csv"
+
+    syll_df_master = syll_df
+    Day = "145"
+
+    for song_directory in syll_df_master.directory.unique():
+        # print(song_directory)
+        # if song_directory.replace("\\", "/") == f"D:/UVA TeNT cag/O908/{Day}/":
+        if True:
+            syll_df = syll_df_master[syll_df_master["directory"] == song_directory]
+            day_num = song_directory.replace("\\", "/").split("/")[-2]
+            merged_syntax_data = pd.DataFrame()
+
+            # file = file.replace("\\", "/")
+            # newfile = ""
+            # for i in file.split("/")[:-1]:
+            #     newfile = newfile + i + "/"
+            # directory = newfile
+            RowLength = 100
+            global AdvancedSyntax_NumRows
+            NumRows = int(AdvancedSyntax_NumRows.get())
+            MasterRaster = pd.DataFrame(columns=range(RowLength), index=range(0))
+            syntax_raster_df_final = pd.DataFrame(columns=range(RowLength), index=range(0))
+            syntax_raster_df_final2 = pd.DataFrame(columns=range(RowLength), index=range(0))
+            UniqueFiles = syll_df.files.unique().tolist()
+
+            global IgnoreSilentGap
+
+            if IgnoreSilentGap.get() == 0:
+                for filename in UniqueFiles:
+                    RowLabels = []
+                    syll_df_temp = syll_df[syll_df["files"]==filename]
+                    Bout_Index = 0
+                    temp_labels = syll_df_temp.labels.tolist()
+                    for syllable in temp_labels:
+                        if syllable != "file_start" and syllable != "file_end":
+                            if syllable != "silent_gap":
+                                RowLabels.append(float(syllable))
+                            else:
+                                while len(RowLabels) < RowLength:
+                                    RowLabels.append(None)
+                                Bout_Index+=1
+                                MasterRaster.loc[filename+"_"+str(Bout_Index)] = RowLabels
+                                RowLabels = []
+                    if len(RowLabels) > 0:
+                        while len(RowLabels) < RowLength:
+                            RowLabels.append(None)
+                        Bout_Index += 1
+                        MasterRaster.loc[filename+"_"+str(Bout_Index)] = RowLabels
+                MasterRaster.to_csv(f"{SyntaxOutputFolder}Raster_{day_num}.csv")
+            else:
+                for filename in UniqueFiles:
+                    RowLabels = []
+                    syll_df_temp = syll_df[syll_df["files"]==filename]
+                    Bout_Index = 0
+                    temp_labels = syll_df_temp.labels.tolist()
+                    for syllable in temp_labels:
+                        if syllable != "file_start" and syllable != "file_end":
+                            RowLabels.append(float(syllable))
+                    if len(RowLabels) > 0:
+                        while len(RowLabels) < RowLength:
+                            RowLabels.append(None)
+                        Bout_Index += 1
+                        MasterRaster.loc[filename+"_"+str(Bout_Index)] = RowLabels
+                MasterRaster.to_csv(f"{SyntaxOutputFolder}Raster_{day_num}.csv")
+    ######################################################################################
+            Syllable_A = float(AdvancedSyntax_AllignmentSyll.get())
+            Master_limit = 0
+
+            global AdvancedSyntax_MinLength
+            Min_length = int(AdvancedSyntax_MinLength.get())
+            syntax_raster_df = MasterRaster
+
+            Shortest_Length = Min_length
+            index_used = []
+            FurthestSyllA = 0
+            print("1")
+            limit = 30
+            while limit > 0:
+                limit -= 1
+                # print(limit)
+                for i, row in syntax_raster_df.iterrows():
+                    if i not in index_used:
+                        if len(row.dropna()) == Shortest_Length:
+                            index_used.append(i)
+                            NewRow = []
+                            for element in row.dropna():
+                                NewRow.append(element)
+                            NewRow_Array = np.array(NewRow)
+                            Syll_A_locations = np.where(NewRow_Array == Syllable_A)[0]
+                            if Mode == 1:
+                                if len(Syll_A_locations) > 1:
+                                    OldA = 0
+                                    A_index = 0
+                                    for A in Syll_A_locations[1:]:
+                                        A_index += 1
+                                        if A > FurthestSyllA:
+                                            FurthestSyllA = A
+                                        NewRow2 = NewRow[OldA:A]
+                                        while len(NewRow2) < RowLength:
+                                            NewRow2.append(None)
+                                        syntax_raster_df_final.loc[str(i)+"_"+str(A_index)] = NewRow2  # adding a row
+                                        OldA = A
+                                else:
+                                    while len(NewRow) < RowLength:
+                                        NewRow.append(None)
+                                    syntax_raster_df_final.loc[i] = NewRow  # adding a row
+                                    # syntax_raster_df_final.index = syntax_raster_df_final.index + 1  # shifting index
+                                    # syntax_raster_df_final = syntax_raster_df_final.sort_index()  # sorting by index
+                            elif Mode == 2:
+                                while len(NewRow) < RowLength:
+                                    NewRow.append(None)
+                                syntax_raster_df_final.loc[i] = NewRow  # adding a row
+                                # syntax_raster_df_final.index = syntax_raster_df_final.index + 1  # shifting index
+                                # syntax_raster_df_final = syntax_raster_df_final.sort_index()  # sorting by index
+                Shortest_Length += 1
+                if Shortest_Length >= RowLength:
+                    limit = -1
+            print("2")
+            syntax_raster_df_final.to_csv(f"{SyntaxOutputFolder}Raster2_{day_num}.csv")
+    ################################################################
+            index_used2 = []
+            Shortest_Length2 = 20
+            while Shortest_Length2 > 1:
+                for i, row in syntax_raster_df_final.iterrows():
+                    if i not in index_used2:
+                        if len(row.dropna()) == Shortest_Length2:
+                            index_used2.append(i)
+                            NewRow = []
+                            for element in row.dropna():
+                                NewRow.append(element)
+                            NewRow_Array = np.array(NewRow)
+                            Syll_A_locations = np.where(NewRow_Array == Syllable_A)[0]
+                            if len(Syll_A_locations) > 0:
+                            # if False:
+                                NewRow2 = []
+                                for x in range(FurthestSyllA - Syll_A_locations[0]):
+                                    NewRow2.append(None)
+                                for item in NewRow:
+                                    NewRow2.append(item)
+                                NewRow = NewRow2
+                                while len(NewRow) < RowLength:
+                                    NewRow.append(None)
+                                try:
+                                    syntax_raster_df_final2.loc[i] = NewRow  # adding a row
+                                except:
+                                    print(NewRow)
+                                # syntax_raster_df_final2.index = syntax_raster_df_final2.index + 1  # shifting index
+                                # syntax_raster_df_final2 = syntax_raster_df_final2.sort_index()  # sorting by index
+                            else:
+                                while len(NewRow) < RowLength:
+                                    NewRow.append(None)
+                                syntax_raster_df_final2.loc[i] = NewRow
+                            # elif len(NewRow) == 1:
+                            #     # print(NewRow)
+                            #     while len(NewRow) < RowLength:
+                            #         NewRow.append(None)
+                            #     syntax_raster_df_final2.loc[i] = NewRow  # adding a row
+                                # syntax_raster_df_final2.index = syntax_raster_df_final2.index + 1  # shifting index
+                                # syntax_raster_df_final2 = syntax_raster_df_final2.sort_index()  # sorting by index
+                Shortest_Length2 -= 1
+
+            print("3")
+            syntax_raster_df_final2.to_csv(f"{SyntaxOutputFolder}Raster3_{day_num}.csv")
+
+            RowsToKeep = []
+            while len(RowsToKeep) < NumRows:
+                NewVal = syntax_raster_df_final2.index.tolist()[math.floor(random.random()*len(syntax_raster_df_final2.index.tolist()))]
+                if NewVal not in RowsToKeep:
+                    if len(NewVal) > 2:
+                        RowsToKeep.append(NewVal)
+            syntax_raster_df_final3 = syntax_raster_df_final2[syntax_raster_df_final2.index.isin(RowsToKeep)]
+            syntax_raster_df_final3.to_csv(f"{SyntaxOutputFolder}Raster4_{day_num}.csv")
+
+            syntax_raster_df_final4 = pd.DataFrame(columns=range(RowLength), index=range(0))
+            print("A")
+            for i, row in syntax_raster_df_final3.iterrows():
+                RowCleaned = []
+                PassedSyllA = False
+                for syllable in row.dropna():
+                    if PassedSyllA == False:
+                        if syllable == Syllable_A:
+                            PassedSyllA = True
+                        RowCleaned.append(syllable)
+                    else:
+                        RowCleaned.append(syllable)
+
+                while len(RowCleaned) < RowLength:
+                    RowCleaned.append(None)
+                syntax_raster_df_final4.loc[i] = RowCleaned
+
+
+            syntax_raster_df_final5 = pd.DataFrame(columns=range(RowLength), index=range(0))
+            print("B")
+            Shortest_Length3 = 30
+            index_used3 = []
+            StartTime = time.time()
+            # while len(syntax_raster_df_final5.index.tolist()) < 100:
+            limit = 30
+            while limit > 0:
+                for i, row in syntax_raster_df_final4.iterrows():
+                    Syll_A_locations = np.where(np.array(row.dropna()) == Syllable_A)[0]
+                    # if len(Syll_A_locations) > 0:
+                    if False:
+                        if len(row.dropna()[Syll_A_locations[0]:]) == Shortest_Length3:
+                            if i not in index_used3:
+                                index_used3.append(i)
+                                Syll_A_locations = np.where(np.array(row.dropna()) == Syllable_A)[0]
+                                if len(Syll_A_locations) > 0:
+                                    NewRow2 = []
+                                    for x in range(FurthestSyllA - Syll_A_locations[0]):
+                                        NewRow2.append(None)
+                                    for item in row.dropna():
+                                        NewRow2.append(item)
+                                    row = NewRow2
+                                while len(row) < RowLength:
+                                    row.append(None)
+                                syntax_raster_df_final5.loc[i] = row
+                    else:
+                        while len(row) < RowLength:
+                            row.append(None)
+                        syntax_raster_df_final5.loc[i] = row
+                Shortest_Length3 -= 1
+                limit -= 1
+                print(limit)
+    #
+            syntax_raster_df_final5.to_csv(f"{SyntaxOutputFolder}Raster_Reordered_{day_num}.csv")
+            print("A")
+            syll_df_temp = pd.read_csv("C:/Users/ethan/Desktop/Massimo_Rasters/O908/O908_labels_combined_1.csv")
+            syll_df_temp = syll_df_temp[syll_df_temp["directory"] == "D:/UVA TeNT cag/O908/145\\"]
+            Bird_ID_Blank = ""
+            syntax_data = syntax.SyntaxData(Bird_ID_Blank, syll_df_temp)
+            syntax_data.add_file_bounds("C:/Users/ethan/Desktop/Massimo_Rasters/O908/145/145/")
+            syntax_data.add_gaps(min_gap=0.2)
+            gaps_df = syntax_data.get_gaps_df()
+            print("B")
+            syntax_data.make_transition_matrix()
+            prob_repetitions = syntax_data.get_prob_repetitions()
+            single_rep_counts, single_rep_stats = syntax_data.get_single_repetition_stats()
+            intro_notes_df = syntax_data.get_intro_notes_df()
+            prop_sylls_in_short_bouts = syntax_data.get_prop_sylls_in_short_bouts(max_short_bout_len=2)
+            per_syll_stats = syntax.Utils.merge_per_syll_stats(single_rep_stats, prop_sylls_in_short_bouts,
+                                                               intro_notes_df)
+            print("C")
+            pair_rep_counts, pair_rep_stats = syntax_data.get_pair_repetition_stats()
+            # syntax_data.save_syntax_data(SyntaxOutputFolder)
+
+            X = 10
+            Y = 10
+            syntax_raster_df = syntax_data.make_syntax_raster()
+            # syntax_raster_df_final5 = pd.read_csv(
+            #     "C:/Users/ethan/Desktop/Massimo_Rasters/O908/145/Raster_Reordered_145_3.csv")
+            # syntax_raster_df_final5 = syntax_raster_df_final5.set_index("Unnamed: 0")
+            fig = avn.plotting.plot_syntax_raster(syntax_data, syntax_raster_df_final5, title="O908 Raster - Day 145",
+                                                  figsize=(X, Y))
+            fig.savefig(SyntaxOutputFolder + "Raster_"+str(Syllable_A)+".png")
+            fig.savefig(SyntaxOutputFolder + "Raster.svg")
+            print("DONE")
+
+
 
 def Timing(RunAll=False):
     BadInput = False
@@ -3928,6 +4266,8 @@ Syntax_RasterTab = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
 SyntaxNotebook.add(Syntax_RasterTab, text="Generate Raster Plot")
 SyntaxSettingsFrame = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
 SyntaxNotebook.add(SyntaxSettingsFrame, text="Advanced Settings")
+AdvancedSyntaxTab = tk.Frame(width=MasterFrameWidth, height=MasterFrameHeight)
+SyntaxNotebook.add(AdvancedSyntaxTab, text="Advanced Syntax")
 
 SyntaxFileButton = tk.Button(SyntaxMainFrame, text="Select Labeling File", command=lambda:FileExplorer("Syntax", "Input"))
 SyntaxFileButton.grid(row=0,column=0)
@@ -4369,6 +4709,58 @@ global ChangeFigSize2
 ChangeFigSize2 = IntVar()
 CustomFigSize2 = tk.Checkbutton(Syntax_RasterTab, text="Custom Figure Size", variable=ChangeFigSize2, command=lambda:ChangeFigureSize2())
 CustomFigSize2.grid(row=2, column=4, columnspan=2, padx=10)
+
+### Advanced Syntax ###
+AdvancedSyntax_InputButton = tk.Button(AdvancedSyntaxTab, text="Input Raster Plot", command=lambda:FileExplorer("Advanced Syntax","Input"))
+AdvancedSyntax_InputButton.grid(row=1,column=0)
+global AdvancedSyntax_InputText
+AdvancedSyntax_InputText = tk.Label(AdvancedSyntaxTab, text=Dir_Width*" ", bg="light grey")
+AdvancedSyntax_InputText.grid(row=1, column=1, sticky="w", padx=Padding_Width)
+AdvancedSyntax_OutputButton = tk.Button(AdvancedSyntaxTab, text="Select Output Directory", command=lambda:FileExplorer("Advanced Syntax","Output"))
+AdvancedSyntax_OutputButton.grid(row=2,column=0)
+global AdvancedSyntax_OutputText
+AdvancedSyntax_OutputText = tk.Label(AdvancedSyntaxTab, text=Dir_Width*" ", bg="light grey")
+AdvancedSyntax_OutputText.grid(row=2, column=1, sticky="w", padx=Padding_Width)
+
+global AdvancedSyntax_AlignmentChoices
+global AdvancedSyntax_Syll
+global AdvancedSyntax_AllignmentSyll
+AdvancedSyntax_AllignmentSyll = StringVar()
+AdvancedSyntax_AllignmentSyll.set("Select Label")
+AdvancedSyntax_AlignmentChoices = ["Select Label"]
+AdvancedSyntax_Syll = tk.OptionMenu(AdvancedSyntaxTab, AdvancedSyntax_AllignmentSyll, *AdvancedSyntax_AlignmentChoices)
+AdvancedSyntax_Syll.grid(row=4, column=1, sticky="w", padx=Padding_Width)
+AdvancedSyntax_AlignmentLabel=tk.Label(AdvancedSyntaxTab, text="Select Alignment Syllable: ").grid(row=4, column=0)
+
+AdvancedSyntax_RunButton = tk.Button(AdvancedSyntaxTab, text="Run", command=lambda:AdvancedSyntax(Mode=AdvancedSyntax_Mode.get()))
+AdvancedSyntax_RunButton.grid(row=12, column=0, columnspan=2)
+
+global AdvancedSyntax_NumRows
+AdvancedSyntax_NumRows = StringVar()
+AdvancedSyntax_NumRows.set("100")
+AdvancedSyntax_NumRows_Entry = ttk.Spinbox(AdvancedSyntaxTab, justify="center", from_=10, to=500, increment=10, textvariable=AdvancedSyntax_NumRows).grid(row=5, column=1)
+AdvancedSyntax_NumRows_Text = tk.Label(AdvancedSyntaxTab, text="Number of Rows:").grid(row=5, column=0)
+
+
+global AdvancedSyntax_MinLength
+AdvancedSyntax_MinLength = StringVar()
+AdvancedSyntax_MinLength.set("1")
+AdvancedSyntax_MinLength_Entry = ttk.Spinbox(AdvancedSyntaxTab, justify="center", from_=1, to=10, increment=1, textvariable=AdvancedSyntax_MinLength).grid(row=10, column=1)
+AdvancedSyntax_MinLength_Text = tk.Label(AdvancedSyntaxTab, text="Minimum syllables per row:").grid(row=10, column=0)
+
+global IgnoreSilentGap
+IgnoreSilentGap = IntVar()
+IgnoreSilentGap.set("0")
+IgnoreSilentGap_Checkbox = tk.Checkbutton(AdvancedSyntaxTab, text="Ignore silent gaps",variable=IgnoreSilentGap, onvalue=1, offvalue=0).grid(row=11, column=0, columnspan=2)
+
+global AdvancedSyntax_Mode
+AdvancedSyntax_ModeLabel = tk.Label(AdvancedSyntaxTab, text="Select Raster Type: ").grid(row=13, column=0)
+AdvancedSyntax_Mode = IntVar()
+AdvancedSyntax_Mode.set(1)
+AdvancedSyntax_ModeButton1 = tk.Radiobutton(AdvancedSyntaxTab, text="Motif", variable=AdvancedSyntax_Mode, value=1)
+AdvancedSyntax_ModeButton1.grid(row=13, column=1, sticky='w')
+AdvancedSyntax_ModeButton2 = tk.Radiobutton(AdvancedSyntaxTab, text="Bout", variable=AdvancedSyntax_Mode, value=2)
+AdvancedSyntax_ModeButton2.grid(row=13, column=2, sticky='w')
 
 ### Timing Module ###
 TimingTab = tk.Frame(gui, width=MasterFrameWidth, height=MasterFrameHeight)
